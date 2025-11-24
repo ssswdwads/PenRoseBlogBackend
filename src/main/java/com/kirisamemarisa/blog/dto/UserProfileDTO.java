@@ -1,33 +1,14 @@
-package com.kirisamemarisa.blog.model;
+package com.kirisamemarisa.blog.dto;
 
-import jakarta.persistence.*;
-
-@Entity
-@Table(name = "user_profile")
-public class UserProfile {
-    @Id
-    @Column(name = "user_id")
+public class UserProfileDTO {
     private Long id;
-
-    @OneToOne
-    @MapsId
-    @JoinColumn(name = "user_id")
-    private User user;
-
-    @Column(length = 50, nullable = false)
     private String nickname;
-
-    @Column(name = "avatar_url", length = 255)
     private String avatarUrl;
-
-    @Column(name = "background_url", length = 255)
     private String backgroundUrl;
+    private String gender;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
-
-    public User getUser() { return user; }
-    public void setUser(User user) { this.user = user; }
 
     public String getNickname() { return nickname; }
     public void setNickname(String nickname) { this.nickname = nickname; }
@@ -38,7 +19,7 @@ public class UserProfile {
     public String getBackgroundUrl() { return backgroundUrl; }
     public void setBackgroundUrl(String backgroundUrl) { this.backgroundUrl = backgroundUrl; }
 
-    public String getGender() {
-        return user != null ? user.getGender() : null;
-    }
+    public String getGender() { return gender; }
+    public void setGender(String gender) { this.gender = gender; }
 }
+

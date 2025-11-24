@@ -4,9 +4,13 @@ import com.kirisamemarisa.blog.common.ApiResponse;
 import com.kirisamemarisa.blog.common.JwtUtil;
 import com.kirisamemarisa.blog.dto.UserLoginDTO;
 import com.kirisamemarisa.blog.dto.UserRegisterDTO;
+import com.kirisamemarisa.blog.dto.UserProfileDTO;
 import com.kirisamemarisa.blog.mapper.UserMapper;
+import com.kirisamemarisa.blog.mapper.UserProfileMapper;
 import com.kirisamemarisa.blog.model.User;
+import com.kirisamemarisa.blog.model.UserProfile;
 import com.kirisamemarisa.blog.repository.UserRepository;
+import com.kirisamemarisa.blog.repository.UserProfileRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -15,6 +19,8 @@ import org.springframework.stereotype.Service;
 public class UserService {
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private UserProfileRepository userProfileRepository;
 
     /*
     这里的 userMapper 对象，
@@ -27,6 +33,9 @@ public class UserService {
     */
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private UserProfileMapper userProfileMapper;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -61,4 +70,33 @@ public class UserService {
         String token = JwtUtil.generateToken(dbUser.getUsername());
         return new ApiResponse<>(200, "登录成功", token);
     }
+
+    public UserProfileDTO getUserProfileDTO(Long userId) {
+        UserProfile userProfile = userProfileRepository.findByUserId(userId);
+        if (userProfile == null) {
+            return null;
+        }
+        return userProfileMapper.toDTO(userProfile);
+    }
+
+    public boolean updateUserProfile(UserProfileDTO userProfileDTO) {
+        if (userProfileDTO == null || userProfileDTO.getId() == null) {
+            return false;
+        }
+        UserProfile userProfile = userProfileRepository.findByUserId(userProfileDTO.getId());
+        if (userProfile == null) {
+            return false;
+        }
+        userProfile.setNickname(userProfileDTO.getNickname());
+        userProfile.setAvatarUrl(userProfileDTO.getAvatarUrl());
+        userProfile.setBackgroundUrl(userProfileDTO.getBackgroundUrl());
+        // 性别字段属于User表
+        if (userProfile.getUser() != null && userProfileDTO.getGender() != null) {
+            userProfile.getUser().setGender(userProfileDTO.getGender());
+        }
+        userProfileRepository.save(userProfile);
+        return true;
+    }
 }
+
+
