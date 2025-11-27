@@ -4,7 +4,9 @@ import com.kirisamemarisa.blog.common.ApiResponse;
 import com.kirisamemarisa.blog.dto.UserLoginDTO;
 import com.kirisamemarisa.blog.dto.UserRegisterDTO;
 import com.kirisamemarisa.blog.dto.UserProfileDTO;
+import com.kirisamemarisa.blog.dto.LoginResponseDTO;
 import com.kirisamemarisa.blog.service.UserService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,14 +18,16 @@ public class UserController {
 
     // 注册接口
     @PostMapping("/register")
-    public ApiResponse<Void> register(@RequestBody UserRegisterDTO userRegisterDTO) {
-        return userService.register(userRegisterDTO);
+    public ApiResponse<Void> register(@RequestBody @Valid UserRegisterDTO userRegisterDTO) {
+        userService.register(userRegisterDTO);
+        return new ApiResponse<>(200, "注册成功", null);
     }
 
     // 登录接口
     @PostMapping("/login")
-    public ApiResponse<String> login(@RequestBody UserLoginDTO userLoginDTO) {
-        return userService.login(userLoginDTO);
+    public ApiResponse<LoginResponseDTO> login(@RequestBody @Valid UserLoginDTO userLoginDTO) {
+        LoginResponseDTO resp = userService.login(userLoginDTO);
+        return new ApiResponse<>(200, "登录成功", resp);
     }
 
     // 获取用户个人信息

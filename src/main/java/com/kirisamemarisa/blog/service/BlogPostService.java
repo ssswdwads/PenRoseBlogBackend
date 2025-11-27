@@ -8,7 +8,7 @@ import java.util.List;
 public interface BlogPostService {
     ApiResponse<Long> create(BlogPostCreateDTO dto);
     BlogPostDTO getById(Long id);
-    boolean update(Long id, BlogPostUpdateDTO dto);
+    ApiResponse<Boolean> update(Long id, BlogPostUpdateDTO dto);
     ApiResponse<Boolean> toggleLike(Long blogPostId, Long userId);
     ApiResponse<Boolean> toggleCommentLike(Long commentId, Long userId);
     ApiResponse<Long> addComment(CommentCreateDTO dto);

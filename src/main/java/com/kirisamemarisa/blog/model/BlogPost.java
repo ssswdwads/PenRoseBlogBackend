@@ -1,8 +1,9 @@
-
 package com.kirisamemarisa.blog.model;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "blog_post")
@@ -54,6 +55,9 @@ public class BlogPost {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @OneToMany(mappedBy = "blogPost", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Comment> comments = new ArrayList<>();
+
     @PrePersist
     protected void prePersist() {
         createdAt = LocalDateTime.now();
@@ -90,4 +94,6 @@ public class BlogPost {
     public void setOriginalPost(BlogPost originalPost) { this.originalPost = originalPost; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public List<Comment> getComments() { return comments; }
+    public void setComments(List<Comment> comments) { this.comments = comments; }
 }

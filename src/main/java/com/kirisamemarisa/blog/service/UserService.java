@@ -1,7 +1,8 @@
 package com.kirisamemarisa.blog.service;
 
-import com.kirisamemarisa.blog.common.ApiResponse;
+import com.kirisamemarisa.blog.common.BusinessException;
 import com.kirisamemarisa.blog.common.JwtUtil;
+import com.kirisamemarisa.blog.dto.LoginResponseDTO;
 import com.kirisamemarisa.blog.dto.UserLoginDTO;
 import com.kirisamemarisa.blog.dto.UserRegisterDTO;
 import com.kirisamemarisa.blog.dto.UserProfileDTO;
@@ -31,34 +32,49 @@ public class UserService {
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-    public ApiResponse<Void> register(UserRegisterDTO dto) {
-        if (dto == null) return new ApiResponse<>(400, "请求体为空", null);
+    public void register(UserRegisterDTO dto) {
+        if (dto == null) throw new BusinessException("请求体为空");
         String username = dto.getUsername();
         String password = dto.getPassword();
         if (username == null || !username.matches("^[A-Za-z0-9_]{5,15}$"))
-            return new ApiResponse<>(400, "用户名格式不合法", null);
+            throw new BusinessException("用户名格式不合法");
         if (password == null || !password.matches("^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d]{8,12}$"))
-            return new ApiResponse<>(400, "密码格式不合法", null);
+            throw new BusinessException("密码格式不合法");
         if (userRepository.findByUsername(username) != null)
-            return new ApiResponse<>(400, "用户名已存在", null);
+            throw new BusinessException("用户名已存在");
         User user = userMapper.toUser(dto);
         user.setPassword(passwordEncoder.encode(password));
         userRepository.save(user);
-        return new ApiResponse<>(200, "注册成功", null);
     }
 
-    public ApiResponse<String> login(UserLoginDTO dto) {
-        if (dto == null) return new ApiResponse<>(400, "请求体为空", null);
+    public LoginResponseDTO login(UserLoginDTO dto) {
+        if (dto == null) throw new BusinessException("请求体为空");
         String username = dto.getUsername();
         String password = dto.getPassword();
         if (username == null || password == null)
-            return new ApiResponse<>(400, "用户名或密码为空", null);
+            throw new BusinessException("用户名或密码为空");
         User dbUser = userRepository.findByUsername(username);
-        if (dbUser == null) return new ApiResponse<>(404, "用户不存在", null);
+        if (dbUser == null) throw new BusinessException("用户不存在");
         if (!passwordEncoder.matches(password, dbUser.getPassword()))
-            return new ApiResponse<>(401, "密码错误", null);
-        String token = JwtUtil.generateToken(dbUser.getUsername());
-        return new ApiResponse<>(200, "登录成功", token);
+            throw new BusinessException("密码错误");
+        String token = JwtUtil.generateToken(dbUser.getId(), dbUser.getUsername());
+        // 查询用户profile
+        UserProfile profile = userProfileRepository.findById(dbUser.getId()).orElse(null);
+        LoginResponseDTO resp = new LoginResponseDTO();
+        resp.setToken(token);
+        resp.setUserId(dbUser.getId());
+        if (profile != null) {
+            resp.setNickname(profile.getNickname());
+            resp.setAvatarUrl(profile.getAvatarUrl());
+            resp.setBackgroundUrl(profile.getBackgroundUrl());
+            resp.setGender(profile.getGender());
+        } else {
+            resp.setNickname("");
+            resp.setAvatarUrl("");
+            resp.setBackgroundUrl("");
+            resp.setGender(dbUser.getGender() != null ? dbUser.getGender() : "");
+        }
+        return resp;
     }
 
     public UserProfileDTO getUserProfileDTO(Long userId) {

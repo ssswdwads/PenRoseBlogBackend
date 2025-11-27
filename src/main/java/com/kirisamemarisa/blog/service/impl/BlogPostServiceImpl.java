@@ -5,10 +5,13 @@ import com.kirisamemarisa.blog.dto.*;
 import com.kirisamemarisa.blog.model.*;
 import com.kirisamemarisa.blog.repository.*;
 import com.kirisamemarisa.blog.service.BlogPostService;
+import com.kirisamemarisa.blog.mapper.BlogPostMapper;
+import com.kirisamemarisa.blog.service.CommentService;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.util.Optional; import java.util.stream.Collectors; import java.util.List;
+import java.util.Optional;
+import java.util.List;
 
 @Service public class BlogPostServiceImpl implements BlogPostService {
     private final BlogPostRepository blogPostRepository;
@@ -17,19 +20,25 @@ import java.util.Optional; import java.util.stream.Collectors; import java.util.
     private final BlogPostLikeRepository blogPostLikeRepository;
     private final CommentLikeRepository commentLikeRepository;
     private final UserProfileRepository userProfileRepository;
+    private final BlogPostMapper blogPostMapper;
+    private final CommentService commentService; // 新增依赖
 
     public BlogPostServiceImpl(BlogPostRepository blogPostRepository,
                                UserRepository userRepository,
                                CommentRepository commentRepository,
                                BlogPostLikeRepository blogPostLikeRepository,
                                CommentLikeRepository commentLikeRepository,
-                               UserProfileRepository userProfileRepository) {
+                               UserProfileRepository userProfileRepository,
+                               BlogPostMapper blogPostMapper,
+                               CommentService commentService) { // 注入 CommentService
         this.blogPostRepository = blogPostRepository;
         this.userRepository = userRepository;
         this.commentRepository = commentRepository;
         this.blogPostLikeRepository = blogPostLikeRepository;
         this.commentLikeRepository = commentLikeRepository;
         this.userProfileRepository = userProfileRepository;
+        this.blogPostMapper = blogPostMapper;
+        this.commentService = commentService; // 初始化 CommentService
     }
 
     @Override
@@ -60,22 +69,34 @@ import java.util.Optional; import java.util.stream.Collectors; import java.util.
     @Override
     @Transactional(readOnly = true)
     public BlogPostDTO getById(Long id) {
-        return blogPostRepository.findById(id).map(p -> toDTO(p, null)).orElse(null);
+        return blogPostRepository.findById(id).map(p -> blogPostMapper.toDTO(p)).orElse(null);
     }
 
     @Override
     @Transactional
-    public boolean update(Long id, BlogPostUpdateDTO dto) {
-        if (dto == null) return false;
+    public ApiResponse<Boolean> update(Long id, BlogPostUpdateDTO dto) {
+        if (dto == null) return new ApiResponse<>(400, "请求体不能为空", false);
         Optional<BlogPost> opt = blogPostRepository.findById(id);
-        if (opt.isEmpty()) return false;
+        if (opt.isEmpty()) return new ApiResponse<>(404, "博客不存在", false);
         BlogPost post = opt.get();
+        // 支持cover字段兼容
         if (dto.getCoverImageUrl() != null) post.setCoverImageUrl(dto.getCoverImageUrl());
+        // 兼容前端传cover字段
+        try {
+            java.lang.reflect.Field coverField = dto.getClass().getDeclaredField("cover");
+            coverField.setAccessible(true);
+            Object coverValue = coverField.get(dto);
+            if (coverValue instanceof String && !((String)coverValue).isEmpty()) {
+                post.setCoverImageUrl((String)coverValue);
+            }
+        } catch (Exception ignored) {}
         if (dto.getContent() != null && !dto.getContent().trim().isEmpty())
             post.setContent(dto.getContent().trim());
         if (dto.getDirectory() != null) post.setDirectory(dto.getDirectory());
+        // 支持后续字段扩展
+        blogPostMapper.updateEntityFromDTO(dto, post);
         blogPostRepository.save(post);
-        return true;
+        return new ApiResponse<>(200, "更新成功", true);
     }
 
     @Override
@@ -107,71 +128,18 @@ import java.util.Optional; import java.util.stream.Collectors; import java.util.
     }
 
     @Override
-    @Transactional
-    public ApiResponse<Boolean> toggleCommentLike(Long commentId, Long userId) {
-        if (commentId == null || userId == null)
-            return new ApiResponse<>(400, "参数缺失", false);
-        Optional<Comment> cOpt = commentRepository.findById(commentId);
-        if (cOpt.isEmpty()) return new ApiResponse<>(404, "评论不存在", false);
-        Optional<User> uOpt = userRepository.findById(userId);
-        if (uOpt.isEmpty()) return new ApiResponse<>(404, "用户不存在", false);
-
-        Comment comment = cOpt.get();
-        Optional<CommentLike> likeOpt = commentLikeRepository.findByCommentIdAndUserId(commentId, userId);
-        if (likeOpt.isPresent()) {
-            commentLikeRepository.delete(likeOpt.get());
-            comment.setLikeCount(safeLong(comment.getLikeCount()) - 1);
-            commentRepository.save(comment);
-            return new ApiResponse<>(200, "已取消点赞", false);
-        } else {
-            CommentLike cl = new CommentLike();
-            cl.setComment(comment);
-            cl.setUser(uOpt.get());
-            commentLikeRepository.save(cl);
-            comment.setLikeCount(safeLong(comment.getLikeCount()) + 1);
-            commentRepository.save(comment);
-            return new ApiResponse<>(200, "点赞成功", true);
-        }
-    }
-
-    @Override
-    @Transactional
     public ApiResponse<Long> addComment(CommentCreateDTO dto) {
-        if (dto == null) return new ApiResponse<>(400, "请求体不能为空", null);
-        if (dto.getBlogPostId() == null) return new ApiResponse<>(400, "博客ID不能为空", null);
-        if (dto.getUserId() == null) return new ApiResponse<>(400, "用户ID不能为空", null);
-        if (dto.getContent() == null || dto.getContent().trim().isEmpty())
-            return new ApiResponse<>(400, "评论内容不能为空", null);
-        Optional<BlogPost> postOpt = blogPostRepository.findById(dto.getBlogPostId());
-        if (postOpt.isEmpty()) return new ApiResponse<>(404, "博客不存在", null);
-        Optional<User> userOpt = userRepository.findById(dto.getUserId());
-        if (userOpt.isEmpty()) return new ApiResponse<>(404, "用户不存在", null);
-
-        Comment c = new Comment();
-        c.setBlogPost(postOpt.get());
-        c.setUser(userOpt.get());
-        c.setContent(dto.getContent().trim());
-        Comment saved = commentRepository.save(c);
-
-        BlogPost post = postOpt.get();
-        post.setCommentCount(safeLong(post.getCommentCount()) + 1);
-        blogPostRepository.save(post);
-
-        return new ApiResponse<>(200, "评论成功", saved.getId());
+        return commentService.addComment(dto);
     }
 
     @Override
-    @Transactional(readOnly = true)
     public List<CommentDTO> listComments(Long blogPostId, Long currentUserId) {
-        return commentRepository.findByBlogPostIdOrderByCreatedAtDesc(blogPostId)
-                .stream().map(c -> toCommentDTO(c, currentUserId)).collect(Collectors.toList());
+        return commentService.listComments(blogPostId, currentUserId);
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public List<BlogPostDTO> list(int page, int size, Long currentUserId) {
-        return blogPostRepository.findAll(PageRequest.of(page, size))
-                .stream().map(p -> toDTO(p, currentUserId)).collect(Collectors.toList());
+    public ApiResponse<Boolean> toggleCommentLike(Long commentId, Long userId) {
+        return commentService.toggleLike(commentId, userId);
     }
 
     @Override
@@ -209,28 +177,14 @@ import java.util.Optional; import java.util.stream.Collectors; import java.util.
         return new ApiResponse<>(200, "转发成功", saved.getId());
     }
 
-    private BlogPostDTO toDTO(BlogPost post, Long currentUserId) {
-        BlogPostDTO dto = new BlogPostDTO();
-        dto.setId(post.getId());
-        dto.setTitle(post.getTitle());
-        dto.setUserId(post.getUser() != null ? post.getUser().getId() : null);
-        dto.setCoverImageUrl(post.getCoverImageUrl());
-        dto.setContent(post.getContent());
-        dto.setDirectory(post.getDirectory());
-        dto.setLikeCount(safeLong(post.getLikeCount()));
-        dto.setCommentCount(safeLong(post.getCommentCount()));
-        dto.setShareCount(safeLong(post.getShareCount()));
-        dto.setRepostCount(safeInt(post.getRepostCount()));
-        dto.setCreatedAt(post.getCreatedAt());
-        dto.setUpdatedAt(post.getUpdatedAt());
-        dto.setRepost(post.isRepost());
-        dto.setOriginalPostId(post.getOriginalPost() != null ? post.getOriginalPost().getId() : null);
-        if (currentUserId != null) {
-            dto.setLikedByCurrentUser(
-                    blogPostLikeRepository.findByBlogPostIdAndUserId(post.getId(), currentUserId).isPresent()
-            );
-        }
-        return dto;
+
+    @Override
+    public List<BlogPostDTO> list(int page, int size, Long currentUserId) {
+        // 示例实现，实际可根据业务需求调整
+        return blogPostRepository.findAll(PageRequest.of(page, size))
+                .stream()
+                .map(blogPostMapper::toDTO)
+                .toList();
     }
 
     private CommentDTO toCommentDTO(Comment c, Long currentUserId) {

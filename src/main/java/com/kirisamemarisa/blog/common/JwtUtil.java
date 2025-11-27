@@ -13,12 +13,14 @@ public class JwtUtil {
     //JWT有效期
     private static final long EXPIRATION = 1000L * 60 * 60 * 24 * 7; // 7天
 
-    //生成JWT的方法
-    public static String generateToken(String username) {
+    //生成JWT的方法，包含userId和username
+    public static String generateToken(Long userId, String username) {
         return Jwts.builder()//JWT构建器
 
                 //头部
                 .setSubject(username)//主题，用户名标识
+                .claim("userId", userId) // 将userId写入JWT的payload
+                .claim("username", username) // 将username写入JWT的payload
                 .setIssuedAt(new Date())//JWT签发时间
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION))//JWT设置过期时间
                 .signWith(key)//使用HS256算法和密钥签名

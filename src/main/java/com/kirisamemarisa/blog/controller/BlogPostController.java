@@ -23,15 +23,20 @@ public class BlogPostController {
     }
 
     @GetMapping("/{id}")
-    public BlogPostDTO get(@PathVariable Long id) {
-        return blogPostService.getById(id);
+    public ApiResponse<BlogPostDTO> get(@PathVariable Long id) {
+        BlogPostDTO dto = blogPostService.getById(id);
+        if (dto == null) {
+            return new ApiResponse<>(404, "博客不存在", null);
+        }
+        return new ApiResponse<>(200, "获取成功", dto);
     }
 
     @GetMapping
-    public List<BlogPostDTO> list(@RequestParam(defaultValue = "0") int page,
+    public ApiResponse<List<BlogPostDTO>> list(@RequestParam(defaultValue = "0") int page,
                                   @RequestParam(defaultValue = "10") int size,
                                   @RequestParam(required = false) Long currentUserId) {
-        return blogPostService.list(page, size, currentUserId);
+        List<BlogPostDTO> list = blogPostService.list(page, size, currentUserId);
+        return new ApiResponse<>(200, "获取成功", list);
     }
 
     @PostMapping("/{id}/like")
@@ -46,9 +51,10 @@ public class BlogPostController {
     }
 
     @GetMapping("/{id}/comments")
-    public List<CommentDTO> comments(@PathVariable Long id,
+    public ApiResponse<List<CommentDTO>> comments(@PathVariable Long id,
                                      @RequestParam(required = false) Long currentUserId) {
-        return blogPostService.listComments(id, currentUserId);
+        List<CommentDTO> list = blogPostService.listComments(id, currentUserId);
+        return new ApiResponse<>(200, "获取成功", list);
     }
 
     @PostMapping("/comment/{id}/like")
@@ -60,5 +66,10 @@ public class BlogPostController {
     @PostMapping("/repost")
     public ApiResponse<Long> repost(@RequestBody RepostCreateDTO dto) {
         return blogPostService.repost(dto);
+    }
+
+    @PutMapping("/{id}")
+    public ApiResponse<Boolean> update(@PathVariable Long id, @RequestBody BlogPostUpdateDTO dto) {
+        return blogPostService.update(id, dto);
     }
 }
