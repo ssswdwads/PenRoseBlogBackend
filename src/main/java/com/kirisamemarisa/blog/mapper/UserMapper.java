@@ -4,10 +4,31 @@ import com.kirisamemarisa.blog.dto.UserRegisterDTO;
 import com.kirisamemarisa.blog.dto.UserLoginDTO;
 import com.kirisamemarisa.blog.model.User;
 import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+import org.mapstruct.Mappings;
 
 @Mapper(componentModel = "spring")
 public interface UserMapper {
+    @Mappings({
+        @Mapping(target = "id", ignore = true),
+        @Mapping(target = "username", source = "username"),
+        @Mapping(target = "password", source = "password"),
+        @Mapping(target = "gender", source = "gender")
+    })
     User toUser(UserRegisterDTO dto);
+
+    @Mappings({
+        @Mapping(target = "id", ignore = true),
+        @Mapping(target = "username", source = "username"),
+        @Mapping(target = "password", source = "password"),
+        @Mapping(target = "gender", ignore = true)
+    })
     User toUser(UserLoginDTO dto);
+
+    @Mappings({
+        @Mapping(target = "username", source = "username"),
+        @Mapping(target = "password", source = "password"),
+        @Mapping(target = "gender", source = "gender")
+    })
     UserRegisterDTO toRegisterDTO(User user);
 }
