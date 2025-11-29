@@ -23,8 +23,9 @@ public class BlogPostController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<BlogPostDTO> get(@PathVariable Long id) {
-        BlogPostDTO dto = blogPostService.getById(id);
+    public ApiResponse<BlogPostDTO> get(@PathVariable Long id,
+                                        @RequestParam(required = false) Long currentUserId) {
+        BlogPostDTO dto = blogPostService.getById(id, currentUserId);
         if (dto == null) {
             return new ApiResponse<>(404, "博客不存在", null);
         }

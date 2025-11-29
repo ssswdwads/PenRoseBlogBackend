@@ -8,6 +8,7 @@ import com.kirisamemarisa.blog.service.BlogPostService;
 import com.kirisamemarisa.blog.mapper.BlogPostMapper;
 import com.kirisamemarisa.blog.service.CommentService;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.Optional;
@@ -70,8 +71,14 @@ import org.springframework.data.domain.Page;
 
     @Override
     @Transactional(readOnly = true)
-    public BlogPostDTO getById(Long id) {
-        return blogPostRepository.findById(id).map(blogPostMapper::toDTO).orElse(null);
+    public BlogPostDTO getById(Long id, Long currentUserId) {
+        BlogPostDTO dto = blogPostRepository.findById(id).map(blogPostMapper::toDTO).orElse(null);
+        if (dto != null && currentUserId != null) {
+            // 检查当前用户是否点赞
+            boolean liked = blogPostLikeRepository.findByBlogPostIdAndUserId(id, currentUserId).isPresent();
+            dto.setLikedByCurrentUser(liked);
+        }
+        return dto;
     }
 
     @Override
@@ -182,7 +189,8 @@ import org.springframework.data.domain.Page;
 
     @Override
     public PageResult<BlogPostDTO> pageList(int page, int size, Long currentUserId) {
-        Page<BlogPost> blogPage = blogPostRepository.findAll(PageRequest.of(page, size));
+        PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<BlogPost> blogPage = blogPostRepository.findAll(pageRequest);
         List<BlogPost> posts = blogPage.getContent();
         // 批量获取所有 userId
         List<Long> userIds = posts.stream()
