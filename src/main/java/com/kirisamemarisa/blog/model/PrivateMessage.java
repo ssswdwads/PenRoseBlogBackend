@@ -34,6 +34,9 @@ public class PrivateMessage {
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
+    @Column(nullable = false)
+    private boolean readByReceiver = false;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = Instant.now();
@@ -94,4 +97,7 @@ public class PrivateMessage {
     public Instant getCreatedAt() {
         return createdAt;
     }
+
+    public boolean isReadByReceiver() { return readByReceiver; }
+    public void setReadByReceiver(boolean readByReceiver) { this.readByReceiver = readByReceiver; }
 }

@@ -8,6 +8,7 @@ public class ConversationSummaryDTO {
     private String avatarUrl;
     private String lastMessage;
     private Instant lastAt;
+    private long unreadCount;
 
     public Long getOtherId() {
         return otherId;
@@ -47,5 +48,13 @@ public class ConversationSummaryDTO {
 
     public void setLastAt(Instant lastAt) {
         this.lastAt = lastAt;
+    }
+
+    public long getUnreadCount() {
+        return unreadCount;
+    }
+
+    public void setUnreadCount(long unreadCount) {
+        this.unreadCount = unreadCount;
     }
 }

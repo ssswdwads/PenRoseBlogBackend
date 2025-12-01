@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 私信发送与会话查询（增加未认证头兼容 + 推送事件）。
@@ -125,64 +126,76 @@ public class PrivateMessageController {
         if (me == null)
             return new ApiResponse<>(401, "未认证", null);
 
-        // Map otherId -> summary (LinkedHashMap to preserve insertion order)
         Map<Long, ConversationSummaryDTO> map = new LinkedHashMap<>();
 
-        // Messages where I'm the sender (other = receiver)
-        // Use fetch-join version so receiver's fields are initialized
+        // 发出的消息（对方 = 接收者）
         privateMessageRepository.findBySenderWithReceiverOrderByCreatedAtDesc(me).forEach(m -> {
             User receiver = m.getReceiver();
             Long otherId = receiver != null ? receiver.getId() : null;
-            if (otherId == null)
-                return;
+            if (otherId == null) return;
             ConversationSummaryDTO cur = map.get(otherId);
             if (cur == null || m.getCreatedAt().isAfter(cur.getLastAt())) {
                 ConversationSummaryDTO s = new ConversationSummaryDTO();
                 s.setOtherId(otherId);
-                // use profile if present
                 com.kirisamemarisa.blog.model.UserProfile prof = userProfileRepository.findById(otherId).orElse(null);
-                if (prof != null) {
-                    s.setNickname(prof.getNickname());
-                    s.setAvatarUrl(prof.getAvatarUrl());
-                } else {
-                    s.setNickname(receiver.getUsername());
-                    s.setAvatarUrl("");
-                }
+                if (prof != null) { s.setNickname(prof.getNickname()); s.setAvatarUrl(prof.getAvatarUrl()); }
+                else { s.setNickname(receiver.getUsername()); s.setAvatarUrl(""); }
                 s.setLastMessage(choosePreview(m));
                 s.setLastAt(m.getCreatedAt());
                 map.put(otherId, s);
             }
         });
 
-        // Messages where I'm the receiver (other = sender)
+        // 收到的消息（对方 = 发送者）
         privateMessageRepository.findByReceiverWithSenderOrderByCreatedAtDesc(me).forEach(m -> {
             User sender = m.getSender();
             Long otherId = sender != null ? sender.getId() : null;
-            if (otherId == null)
-                return;
+            if (otherId == null) return;
             ConversationSummaryDTO cur = map.get(otherId);
             if (cur == null || m.getCreatedAt().isAfter(cur.getLastAt())) {
                 ConversationSummaryDTO s = new ConversationSummaryDTO();
-                s.setOtherId(otherId);
                 com.kirisamemarisa.blog.model.UserProfile prof2 = userProfileRepository.findById(otherId).orElse(null);
-                if (prof2 != null) {
-                    s.setNickname(prof2.getNickname());
-                    s.setAvatarUrl(prof2.getAvatarUrl());
-                } else {
-                    s.setNickname(sender.getUsername());
-                    s.setAvatarUrl("");
-                }
+                s.setOtherId(otherId);
+                if (prof2 != null) { s.setNickname(prof2.getNickname()); s.setAvatarUrl(prof2.getAvatarUrl()); }
+                else { s.setNickname(sender.getUsername()); s.setAvatarUrl(""); }
                 s.setLastMessage(choosePreview(m));
                 s.setLastAt(m.getCreatedAt());
                 map.put(otherId, s);
             }
         });
 
-        // Convert to list and sort by lastAt desc
         java.util.List<ConversationSummaryDTO> list = new java.util.ArrayList<>(map.values());
+        // 计算每个会话未读数
+        list.forEach(s -> {
+            long unread = privateMessageRepository.countUnreadBetween(me.getId(), s.getOtherId());
+            s.setUnreadCount(unread);
+        });
         Collections.sort(list, Comparator.comparing(ConversationSummaryDTO::getLastAt).reversed());
         PageResult<ConversationSummaryDTO> page = new PageResult<>(list, list.size(), 0, list.size());
         return new ApiResponse<>(200, "OK", page);
+    }
+
+    // 未读总数
+    @GetMapping("/unread/total")
+    public ApiResponse<Long> unreadTotal(
+            @RequestHeader(name = "X-User-Id", required = false) Long headerUserId,
+            @AuthenticationPrincipal UserDetails principal) {
+        User me = resolveCurrent(principal, headerUserId);
+        if (me == null) return new ApiResponse<>(401, "未认证", null);
+        long total = privateMessageRepository.countUnreadTotal(me.getId());
+        return new ApiResponse<>(200, "OK", total);
+    }
+
+    // 将与某人的会话标记为已读
+    @PostMapping("/conversation/{otherId}/read")
+    @Transactional
+    public ApiResponse<Integer> markRead(@PathVariable Long otherId,
+            @RequestHeader(name = "X-User-Id", required = false) Long headerUserId,
+            @AuthenticationPrincipal UserDetails principal) {
+        User me = resolveCurrent(principal, headerUserId);
+        if (me == null) return new ApiResponse<>(401, "未认证", null);
+        int updated = privateMessageRepository.markConversationRead(otherId, me.getId());
+        return new ApiResponse<>(200, "OK", updated);
     }
 
     private String choosePreview(PrivateMessage m) {
