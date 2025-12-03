@@ -61,14 +61,13 @@ public class BlogViewServiceImpl implements BlogViewService {
             user = userRepository.findById(dto.getUserId()).orElse(null);
         }
 
-        // 1\. 记录一条浏览明细
+        // 1. 记录一条浏览明细
         BlogViewRecord record = new BlogViewRecord();
         record.setBlogPost(post);
         record.setUser(user);
-        record.setIpAddress(dto.getIpAddress());
         blogViewRecordRepository.save(record);
 
-        // 2\. 增加浏览统计
+        // 2. 增加浏览统计
         BlogViewStats stats = blogViewStatsRepository.findByBlogPostId(post.getId())
                 .orElseGet(() -> {
                     BlogViewStats s = new BlogViewStats();

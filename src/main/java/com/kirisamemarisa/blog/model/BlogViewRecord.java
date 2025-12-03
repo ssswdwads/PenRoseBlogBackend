@@ -21,10 +21,6 @@ public class BlogViewRecord {
     @JoinColumn(name = "user_id")
     private User user;
 
-    // 简单记录 IP，便于后续做去重或风控
-    @Column(name = "ip_address", length = 64)
-    private String ipAddress;
-
     @Column(name = "viewed_at", nullable = false)
     private LocalDateTime viewedAt;
 
@@ -53,14 +49,6 @@ public class BlogViewRecord {
 
     public void setUser(User user) {
         this.user = user;
-    }
-
-    public String getIpAddress() {
-        return ipAddress;
-    }
-
-    public void setIpAddress(String ipAddress) {
-        this.ipAddress = ipAddress;
     }
 
     public LocalDateTime getViewedAt() {

@@ -4,7 +4,6 @@ public class BlogViewRecordCreateDTO {
 
     private Long blogPostId;
     private Long userId;
-    private String ipAddress;
 
     public Long getBlogPostId() {
         return blogPostId;
@@ -20,13 +19,5 @@ public class BlogViewRecordCreateDTO {
 
     public void setUserId(Long userId) {
         this.userId = userId;
-    }
-
-    public String getIpAddress() {
-        return ipAddress;
-    }
-
-    public void setIpAddress(String ipAddress) {
-        this.ipAddress = ipAddress;
     }
 }
