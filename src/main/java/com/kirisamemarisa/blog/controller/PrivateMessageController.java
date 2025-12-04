@@ -6,32 +6,31 @@ import com.kirisamemarisa.blog.dto.PrivateMessageDTO;
 import com.kirisamemarisa.blog.events.MessageEventPublisher;
 import com.kirisamemarisa.blog.model.PrivateMessage;
 import com.kirisamemarisa.blog.model.User;
+import com.kirisamemarisa.blog.model.UserProfile;
 import com.kirisamemarisa.blog.repository.UserRepository;
 import com.kirisamemarisa.blog.service.PrivateMessageService;
 import com.kirisamemarisa.blog.repository.PrivateMessageRepository;
 import com.kirisamemarisa.blog.dto.ConversationSummaryDTO;
-import com.kirisamemarisa.blog.model.UserProfile;
 import com.kirisamemarisa.blog.repository.UserProfileRepository;
-import com.kirisamemarisa.blog.service.NotificationService; // 新增导入
-import com.kirisamemarisa.blog.dto.NotificationDTO; // 新增导入
+import com.kirisamemarisa.blog.service.NotificationService;
+import com.kirisamemarisa.blog.dto.NotificationDTO;
 
-import java.util.Map;
-import java.util.LinkedHashMap;
-import java.util.Comparator;
-import java.util.Collections;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.io.IOException;
+import java.time.Instant;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.*;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors; // 新增导入
-import java.time.Instant; // 新增导入
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api/messages")
@@ -41,13 +40,11 @@ public class PrivateMessageController {
     private final PrivateMessageRepository privateMessageRepository;
     private final MessageEventPublisher publisher;
     private final UserProfileRepository userProfileRepository;
-    private final NotificationService notificationService; // 新增字段
+    private final NotificationService notificationService;
 
-    // 私信媒体文件上传根目录（可在 application.yml/application.properties 中配置）
     @Value("${resource.message-media-location:uploads/messages}")
     private String messageMediaLocation;
 
-    // 对外访问前缀，与静态资源映射一致，默认 `/files/messages`（不以 `/` 结尾）
     @Value("${resource.message-media-access-prefix:/files/messages}")
     private String messageMediaAccessPrefix;
 
@@ -56,13 +53,13 @@ public class PrivateMessageController {
                                     PrivateMessageRepository privateMessageRepository,
                                     MessageEventPublisher publisher,
                                     UserProfileRepository userProfileRepository,
-                                    NotificationService notificationService) { // 新增参数
+                                    NotificationService notificationService) {
         this.userRepository = userRepository;
         this.privateMessageService = privateMessageService;
         this.privateMessageRepository = privateMessageRepository;
         this.publisher = publisher;
         this.userProfileRepository = userProfileRepository;
-        this.notificationService = notificationService; // 初始化新增字段
+        this.notificationService = notificationService;
     }
 
     private User resolveCurrent(UserDetails principal, Long headerUserId) {
@@ -73,7 +70,8 @@ public class PrivateMessageController {
         return null;
     }
 
-    private PrivateMessageDTO toDTO(PrivateMessage msg) {
+    // 优化后的转换方法，支持传入预查询好的 Profile Map
+    private PrivateMessageDTO toDTO(PrivateMessage msg, Map<Long, UserProfile> profileMap) {
         PrivateMessageDTO dto = new PrivateMessageDTO();
         dto.setId(msg.getId());
         dto.setSenderId(msg.getSender().getId());
@@ -82,10 +80,12 @@ public class PrivateMessageController {
         dto.setMediaUrl(msg.getMediaUrl());
         dto.setType(msg.getType());
         dto.setCreatedAt(msg.getCreatedAt());
+
         Long sid = msg.getSender() != null ? msg.getSender().getId() : null;
         Long rid = msg.getReceiver() != null ? msg.getReceiver().getId() : null;
+
         if (sid != null) {
-            UserProfile sp = userProfileRepository.findById(sid).orElse(null);
+            UserProfile sp = profileMap != null ? profileMap.get(sid) : null;
             if (sp != null) {
                 dto.setSenderNickname(sp.getNickname());
                 dto.setSenderAvatarUrl(sp.getAvatarUrl());
@@ -95,7 +95,7 @@ public class PrivateMessageController {
             }
         }
         if (rid != null) {
-            UserProfile rp = userProfileRepository.findById(rid).orElse(null);
+            UserProfile rp = profileMap != null ? profileMap.get(rid) : null;
             if (rp != null) {
                 dto.setReceiverNickname(rp.getNickname());
                 dto.setReceiverAvatarUrl(rp.getAvatarUrl());
@@ -107,14 +107,65 @@ public class PrivateMessageController {
         return dto;
     }
 
-    private ApiResponse<PageResult<PrivateMessageDTO>> buildConversation(User me, User other, int page, int size) {
-        List<PrivateMessageDTO> all = privateMessageService
-                .conversation(me, other)
-                .stream().map(this::toDTO).toList();
-        int from = Math.min(page * size, all.size());
-        int to = Math.min(from + size, all.size());
-        List<PrivateMessageDTO> pageList = all.subList(from, to);
-        return new ApiResponse<>(200, "OK", new PageResult<>(pageList, all.size(), page, size));
+    // 辅助方法：单条消息转换（会单独查询 Profile，仅用于发送消息返回值）
+    private PrivateMessageDTO toDTOSingle(PrivateMessage msg) {
+        Map<Long, UserProfile> map = new HashMap<>();
+        if (msg.getSender() != null)
+            userProfileRepository.findById(msg.getSender().getId()).ifPresent(p -> map.put(p.getId(), p));
+        if (msg.getReceiver() != null)
+            userProfileRepository.findById(msg.getReceiver().getId()).ifPresent(p -> map.put(p.getId(), p));
+        return toDTO(msg, map);
+    }
+
+    /**
+     * SSE 订阅接口
+     * 前端：/api/messages/subscribe/{otherId}?userId={当前用户ID}&_={timestamp}
+     */
+    @GetMapping(value = "/subscribe/{otherId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter subscribeConversation(@PathVariable Long otherId,
+                                            @RequestParam("userId") Long userId,
+                                            @RequestHeader(name = "X-User-Id", required = false) Long headerUserId,
+                                            @AuthenticationPrincipal UserDetails principal) {
+        // 简单鉴权：userId 必须等于当前登录的用户
+        User me = resolveCurrent(principal, headerUserId);
+        if (me == null || !Objects.equals(me.getId(), userId)) {
+            // 认证失败时直接返回一个立刻完成的 emitter，前端会 fallback 到轮询
+            SseEmitter emitter = new SseEmitter(0L);
+            emitter.complete();
+            return emitter;
+        }
+
+        User other = userRepository.findById(otherId).orElse(null);
+        if (other == null) {
+            SseEmitter emitter = new SseEmitter(0L);
+            emitter.complete();
+            return emitter;
+        }
+
+        // 初始数据：可以取最近一页消息（与前端 /conversation?page=0&size=20 对齐）
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<PrivateMessage> pmPage = privateMessageService.conversationPage(me, other, pageable);
+
+        Set<Long> userIds = new HashSet<>();
+        pmPage.getContent().forEach(m -> {
+            if (m.getSender() != null) userIds.add(m.getSender().getId());
+            if (m.getReceiver() != null) userIds.add(m.getReceiver().getId());
+        });
+
+        Map<Long, UserProfile> profileMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            List<UserProfile> profiles = userProfileRepository.findAllById(userIds);
+            profiles.forEach(p -> profileMap.put(p.getId(), p));
+        }
+
+        List<PrivateMessageDTO> dtoList = pmPage.getContent().stream()
+                .map(msg -> toDTO(msg, profileMap))
+                .collect(Collectors.toList());
+        // 与前端相同：按时间升序
+        Collections.reverse(dtoList);
+
+        // 使用你已经实现的 MessageEventPublisher 建立 SSE 连接
+        return publisher.subscribe(me.getId(), other.getId(), dtoList);
     }
 
     @GetMapping("/conversation/{otherId}")
@@ -124,12 +175,36 @@ public class PrivateMessageController {
                                                                    @RequestHeader(name = "X-User-Id", required = false) Long headerUserId,
                                                                    @AuthenticationPrincipal UserDetails principal) {
         User me = resolveCurrent(principal, headerUserId);
-        if (me == null)
-            return new ApiResponse<>(401, "未认证", null);
+        if (me == null) return new ApiResponse<>(401, "未认证", null);
         User other = userRepository.findById(otherId).orElse(null);
-        if (other == null)
-            return new ApiResponse<>(404, "用户不存在", null);
-        return buildConversation(me, other, page, size);
+        if (other == null) return new ApiResponse<>(404, "用户不存在", null);
+
+        // 1. 获取分页数据（按时间倒序：最新的在 Page 0）
+        Pageable pageable = PageRequest.of(page, size);
+        Page<PrivateMessage> pmPage = privateMessageService.conversationPage(me, other, pageable);
+
+        // 2. 批量提取用户 ID，一次性查询 Profile，解决 N+1 问题
+        Set<Long> userIds = new HashSet<>();
+        pmPage.getContent().forEach(m -> {
+            if (m.getSender() != null) userIds.add(m.getSender().getId());
+            if (m.getReceiver() != null) userIds.add(m.getReceiver().getId());
+        });
+
+        Map<Long, UserProfile> profileMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            List<UserProfile> profiles = userProfileRepository.findAllById(userIds);
+            profiles.forEach(p -> profileMap.put(p.getId(), p));
+        }
+
+        // 3. 转换为 DTO
+        List<PrivateMessageDTO> dtoList = pmPage.getContent().stream()
+                .map(msg -> toDTO(msg, profileMap))
+                .collect(Collectors.toList());
+
+        // 4. 反转列表：将倒序查出的 [最新, 次新...] 反转为 [次新, 最新]
+        Collections.reverse(dtoList);
+
+        return new ApiResponse<>(200, "OK", new PageResult<>(dtoList, pmPage.getTotalElements(), page, size));
     }
 
     @GetMapping("/conversation/list")
@@ -137,8 +212,7 @@ public class PrivateMessageController {
             @RequestHeader(name = "X-User-Id", required = false) Long headerUserId,
             @AuthenticationPrincipal org.springframework.security.core.userdetails.UserDetails principal) {
         User me = resolveCurrent(principal, headerUserId);
-        if (me == null)
-            return new ApiResponse<>(401, "未认证", null);
+        if (me == null) return new ApiResponse<>(401, "未认证", null);
 
         Map<Long, ConversationSummaryDTO> map = new LinkedHashMap<>();
 
@@ -150,7 +224,7 @@ public class PrivateMessageController {
             if (cur == null || m.getCreatedAt().isAfter(cur.getLastAt())) {
                 ConversationSummaryDTO s = new ConversationSummaryDTO();
                 s.setOtherId(otherId);
-                com.kirisamemarisa.blog.model.UserProfile prof = userProfileRepository.findById(otherId).orElse(null);
+                UserProfile prof = userProfileRepository.findById(otherId).orElse(null);
                 if (prof != null) { s.setNickname(prof.getNickname()); s.setAvatarUrl(prof.getAvatarUrl()); }
                 else { s.setNickname(receiver.getUsername()); s.setAvatarUrl(""); }
                 s.setLastMessage(choosePreview(m));
@@ -166,7 +240,7 @@ public class PrivateMessageController {
             ConversationSummaryDTO cur = map.get(otherId);
             if (cur == null || m.getCreatedAt().isAfter(cur.getLastAt())) {
                 ConversationSummaryDTO s = new ConversationSummaryDTO();
-                com.kirisamemarisa.blog.model.UserProfile prof2 = userProfileRepository.findById(otherId).orElse(null);
+                UserProfile prof2 = userProfileRepository.findById(otherId).orElse(null);
                 s.setOtherId(otherId);
                 if (prof2 != null) { s.setNickname(prof2.getNickname()); s.setAvatarUrl(prof2.getAvatarUrl()); }
                 else { s.setNickname(sender.getUsername()); s.setAvatarUrl(""); }
@@ -176,7 +250,7 @@ public class PrivateMessageController {
             }
         });
 
-        java.util.List<ConversationSummaryDTO> list = new java.util.ArrayList<>(map.values());
+        List<ConversationSummaryDTO> list = new ArrayList<>(map.values());
         list.forEach(s -> {
             long unread = privateMessageRepository.countUnreadBetween(me.getId(), s.getOtherId());
             s.setUnreadCount(unread);
@@ -209,7 +283,6 @@ public class PrivateMessageController {
 
     private String choosePreview(PrivateMessage m) {
         if (m.getType() != null && m.getType() != PrivateMessage.MessageType.TEXT) {
-            // 非文本则直接用类型名称作为预览，比如 IMAGE / VIDEO
             String base = m.getType().name();
             String t = m.getText();
             if (t != null && !t.isEmpty()) {
@@ -219,22 +292,18 @@ public class PrivateMessageController {
             return base;
         }
         String t = m.getText();
-        if (t == null)
-            return "";
+        if (t == null) return "";
         return t.length() > 40 ? t.substring(0, 40) + "..." : t;
     }
 
-    // 新增方法：发送私信通知
     private void sendPmNotification(PrivateMessage msg) {
         try {
-            if (notificationService == null) {
-                return;
-            }
+            if (notificationService == null) return;
             NotificationDTO dto = new NotificationDTO();
             dto.setType("PRIVATE_MESSAGE");
             dto.setSenderId(msg.getSender() != null ? msg.getSender().getId() : null);
             dto.setReceiverId(msg.getReceiver() != null ? msg.getReceiver().getId() : null);
-            dto.setMessage(choosePreview(msg)); // 调用自己的 choosePreview
+            dto.setMessage(choosePreview(msg));
             dto.setStatus(null);
             dto.setCreatedAt(Instant.now());
 
@@ -242,9 +311,7 @@ public class PrivateMessageController {
             if (receiverId != null) {
                 notificationService.sendNotification(receiverId, dto);
             }
-        } catch (Exception ignored) {
-            // 保持最小侵入：通知失败不影响主流程
-        }
+        } catch (Exception ignored) { }
     }
 
     @PostMapping("/text/{otherId}")
@@ -253,18 +320,37 @@ public class PrivateMessageController {
                                                    @RequestHeader(name = "X-User-Id", required = false) Long headerUserId,
                                                    @AuthenticationPrincipal UserDetails principal) {
         User me = resolveCurrent(principal, headerUserId);
-        if (me == null)
-            return new ApiResponse<>(401, "未认证", null);
+        if (me == null) return new ApiResponse<>(401, "未认证", null);
         User other = userRepository.findById(otherId).orElse(null);
-        if (other == null)
-            return new ApiResponse<>(404, "用户不存在", null);
-        PrivateMessage msg = privateMessageService.sendText(me, other, body.getText());
-        PrivateMessageDTO dto = toDTO(msg);
-        publisher.broadcast(me.getId(), other.getId(),
-                privateMessageService.conversation(me, other).stream().map(this::toDTO).collect(java.util.stream.Collectors.toList()));
+        if (other == null) return new ApiResponse<>(404, "用户不存在", null);
 
-        // 新增：发送通知
+        PrivateMessage msg = privateMessageService.sendText(me, other, body.getText());
+        PrivateMessageDTO dto = toDTOSingle(msg);
+
+        // 通知（系统级）
         sendPmNotification(msg);
+
+        // 会话最新一页，用于 SSE 推送
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<PrivateMessage> pmPage = privateMessageService.conversationPage(me, other, pageable);
+
+        Set<Long> userIds = new HashSet<>();
+        pmPage.getContent().forEach(m -> {
+            if (m.getSender() != null) userIds.add(m.getSender().getId());
+            if (m.getReceiver() != null) userIds.add(m.getReceiver().getId());
+        });
+        Map<Long, UserProfile> profileMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            List<UserProfile> profiles = userProfileRepository.findAllById(userIds);
+            profiles.forEach(p -> profileMap.put(p.getId(), p));
+        }
+        List<PrivateMessageDTO> dtoList = pmPage.getContent().stream()
+                .map(m -> toDTO(m, profileMap))
+                .collect(Collectors.toList());
+        Collections.reverse(dtoList);
+
+        // SSE 广播给当前会话双方
+        publisher.broadcast(me.getId(), other.getId(), dtoList);
 
         return new ApiResponse<>(200, "发送成功", dto);
     }
@@ -275,28 +361,41 @@ public class PrivateMessageController {
                                                     @RequestHeader(name = "X-User-Id", required = false) Long headerUserId,
                                                     @AuthenticationPrincipal UserDetails principal) {
         User me = resolveCurrent(principal, headerUserId);
-        if (me == null)
-            return new ApiResponse<>(401, "未认证", null);
+        if (me == null) return new ApiResponse<>(401, "未认证", null);
         User other = userRepository.findById(otherId).orElse(null);
-        if (other == null)
-            return new ApiResponse<>(404, "用户不存在", null);
-        PrivateMessage msg = privateMessageService.sendMedia(me, other, body.getType(), body.getMediaUrl(),
-                body.getText());
-        PrivateMessageDTO dto = toDTO(msg);
-        publisher.broadcast(me.getId(), other.getId(),
-                privateMessageService.conversation(me, other).stream().map(this::toDTO).collect(java.util.stream.Collectors.toList()));
+        if (other == null) return new ApiResponse<>(404, "用户不存在", null);
 
-        // 新增：发送通知
+        PrivateMessage msg = privateMessageService.sendMedia(me, other, body.getType(), body.getMediaUrl(), body.getText());
+        PrivateMessageDTO dto = toDTOSingle(msg);
+
         sendPmNotification(msg);
+
+        // 同样推送最新一页
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<PrivateMessage> pmPage = privateMessageService.conversationPage(me, other, pageable);
+
+        Set<Long> userIds = new HashSet<>();
+        pmPage.getContent().forEach(m -> {
+            if (m.getSender() != null) userIds.add(m.getSender().getId());
+            if (m.getReceiver() != null) userIds.add(m.getReceiver().getId());
+        });
+        Map<Long, UserProfile> profileMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            List<UserProfile> profiles = userProfileRepository.findAllById(userIds);
+            profiles.forEach(p -> profileMap.put(p.getId(), p));
+        }
+        List<PrivateMessageDTO> dtoList = pmPage.getContent().stream()
+                .map(m -> toDTO(m, profileMap))
+                .collect(Collectors.toList());
+        Collections.reverse(dtoList);
+
+        publisher.broadcast(me.getId(), other.getId(), dtoList);
 
         return new ApiResponse<>(200, "发送成功", dto);
     }
 
-    // ===== 私信媒体文件保存工具方法 =====
     private String saveMessageMediaFile(MultipartFile file) throws IOException {
-        if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("上传文件不能为空");
-        }
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("上传文件不能为空");
 
         String originalFilename = file.getOriginalFilename();
         String ext = "";
@@ -307,10 +406,7 @@ public class PrivateMessageController {
             }
         }
 
-        // 生成唯一文件名，避免覆盖
         String filename = UUID.randomUUID().toString().replace("-", "") + ext;
-
-        // 确保上传目录存在，使用配置的 `messageMediaLocation`
         java.nio.file.Path dirPath = java.nio.file.Paths.get(messageMediaLocation).toAbsolutePath().normalize();
         try {
             java.nio.file.Files.createDirectories(dirPath);
@@ -318,7 +414,6 @@ public class PrivateMessageController {
             throw new IOException("创建上传目录失败: " + dirPath, e);
         }
 
-        // 目标文件路径
         java.nio.file.Path destPath = dirPath.resolve(filename).normalize();
         try {
             file.transferTo(destPath.toFile());
@@ -326,23 +421,14 @@ public class PrivateMessageController {
             throw new IOException("保存上传文件失败: " + destPath, e);
         }
 
-        // 规范化访问前缀：以 `/` 开头，不以 `/` 结尾
         String prefix = messageMediaAccessPrefix;
-        if (prefix == null || prefix.isEmpty()) {
-            prefix = "/files/messages";
-        }
-        if (!prefix.startsWith("/")) {
-            prefix = "/" + prefix;
-        }
-        if (prefix.endsWith("/")) {
-            prefix = prefix.substring(0, prefix.length() - 1);
-        }
+        if (prefix == null || prefix.isEmpty()) prefix = "/files/messages";
+        if (!prefix.startsWith("/")) prefix = "/" + prefix;
+        if (prefix.endsWith("/")) prefix = prefix.substring(0, prefix.length() - 1);
 
-        // 返回给前端的访问 URL，例如 `/files/messages/xxxxxx.jpg`
         return prefix + "/" + filename;
     }
 
-    // ===== 私信媒体上传接口 =====
     @PostMapping("/upload")
     public ApiResponse<String> uploadMessageMedia(
             @RequestParam("file") MultipartFile file,
@@ -350,17 +436,11 @@ public class PrivateMessageController {
             @AuthenticationPrincipal UserDetails principal) {
 
         User me = resolveCurrent(principal, headerUserId);
-        if (me == null) {
-            return new ApiResponse<>(401, "未认证", null);
-        }
-
-        if (file == null || file.isEmpty()) {
-            return new ApiResponse<>(400, "上传文件不能为空", null);
-        }
+        if (me == null) return new ApiResponse<>(401, "未认证", null);
+        if (file == null || file.isEmpty()) return new ApiResponse<>(400, "上传文件不能为空", null);
 
         String contentType = file.getContentType();
-        if (contentType == null ||
-                (!contentType.startsWith("image/") && !contentType.startsWith("video/"))) {
+        if (contentType == null || (!contentType.startsWith("image/") && !contentType.startsWith("video/"))) {
             return new ApiResponse<>(400, "仅支持图片或视频文件", null);
         }
 
