@@ -78,11 +78,6 @@ public class BlogPostController {
         return blogPostService.toggleCommentLike(id, userId);
     }
 
-    @PostMapping("/repost")
-    public ApiResponse<Long> repost(@RequestBody RepostCreateDTO dto) {
-        return blogPostService.repost(dto);
-    }
-
     @PutMapping("/{id}")
     public ApiResponse<Boolean> update(@PathVariable Long id, @RequestBody BlogPostUpdateDTO dto) {
         return blogPostService.update(id, dto);

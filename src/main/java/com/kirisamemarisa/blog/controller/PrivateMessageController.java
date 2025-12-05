@@ -14,6 +14,7 @@ import com.kirisamemarisa.blog.dto.ConversationSummaryDTO;
 import com.kirisamemarisa.blog.repository.UserProfileRepository;
 import com.kirisamemarisa.blog.service.NotificationService;
 import com.kirisamemarisa.blog.dto.NotificationDTO;
+import com.kirisamemarisa.blog.service.BlogUrlPreviewService; // NEW
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -41,6 +42,7 @@ public class PrivateMessageController {
     private final MessageEventPublisher publisher;
     private final UserProfileRepository userProfileRepository;
     private final NotificationService notificationService;
+    private final BlogUrlPreviewService blogUrlPreviewService; // NEW
 
     @Value("${resource.message-media-location:uploads/messages}")
     private String messageMediaLocation;
@@ -53,13 +55,15 @@ public class PrivateMessageController {
                                     PrivateMessageRepository privateMessageRepository,
                                     MessageEventPublisher publisher,
                                     UserProfileRepository userProfileRepository,
-                                    NotificationService notificationService) {
+                                    NotificationService notificationService,
+                                    BlogUrlPreviewService blogUrlPreviewService) { // CHANGED
         this.userRepository = userRepository;
         this.privateMessageService = privateMessageService;
         this.privateMessageRepository = privateMessageRepository;
         this.publisher = publisher;
         this.userProfileRepository = userProfileRepository;
         this.notificationService = notificationService;
+        this.blogUrlPreviewService = blogUrlPreviewService; // NEW
     }
 
     private User resolveCurrent(UserDetails principal, Long headerUserId) {
@@ -104,6 +108,10 @@ public class PrivateMessageController {
                 dto.setReceiverAvatarUrl("");
             }
         }
+
+        // NEW: 如果包含站内博客链接，生成预览
+        dto.setBlogPreview(blogUrlPreviewService.extractPreviewFromText(dto.getText()));
+
         return dto;
     }
 
@@ -206,6 +214,8 @@ public class PrivateMessageController {
 
         return new ApiResponse<>(200, "OK", new PageResult<>(dtoList, pmPage.getTotalElements(), page, size));
     }
+
+    // ... 其余方法（listConversations / unreadTotal / markRead / choosePreview / sendPmNotification）保持不变 ...
 
     @GetMapping("/conversation/list")
     public ApiResponse<PageResult<ConversationSummaryDTO>> listConversations(

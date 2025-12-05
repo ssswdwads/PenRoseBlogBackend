@@ -10,6 +10,7 @@ import com.kirisamemarisa.blog.repository.UserRepository;
 import com.kirisamemarisa.blog.common.JwtUtil;
 import com.kirisamemarisa.blog.repository.UserProfileRepository;
 import com.kirisamemarisa.blog.service.PrivateMessageService;
+import com.kirisamemarisa.blog.service.BlogUrlPreviewService; // NEW
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -28,15 +29,18 @@ public class PrivateMessageStreamController {
     private final PrivateMessageService privateMessageService;
     private final MessageEventPublisher publisher;
     private final UserProfileRepository userProfileRepository;
+    private final BlogUrlPreviewService blogUrlPreviewService; // NEW
 
     public PrivateMessageStreamController(UserRepository userRepository,
-            PrivateMessageService privateMessageService,
-            MessageEventPublisher publisher,
-            UserProfileRepository userProfileRepository) {
+                                          PrivateMessageService privateMessageService,
+                                          MessageEventPublisher publisher,
+                                          UserProfileRepository userProfileRepository,
+                                          BlogUrlPreviewService blogUrlPreviewService) { // CHANGED
         this.userRepository = userRepository;
         this.privateMessageService = privateMessageService;
         this.publisher = publisher;
         this.userProfileRepository = userProfileRepository;
+        this.blogUrlPreviewService = blogUrlPreviewService; // NEW
     }
 
     private User resolveCurrent(UserDetails principal, Long headerUserId, String token) {
@@ -84,14 +88,18 @@ public class PrivateMessageStreamController {
                 dto.setReceiverAvatarUrl("");
             }
         }
+
+        // NEW: 填充博客预览
+        dto.setBlogPreview(blogUrlPreviewService.extractPreviewFromText(dto.getText()));
+
         return dto;
     }
 
     @GetMapping("/stream/{otherId}")
     public SseEmitter stream(@PathVariable Long otherId,
-            @RequestHeader(name = "X-User-Id", required = false) Long headerUserId,
-            @RequestParam(name = "token", required = false) String token,
-            @AuthenticationPrincipal UserDetails principal) {
+                             @RequestHeader(name = "X-User-Id", required = false) Long headerUserId,
+                             @RequestParam(name = "token", required = false) String token,
+                             @AuthenticationPrincipal UserDetails principal) {
         User me = resolveCurrent(principal, headerUserId, token);
         if (me == null) {
             // 返回一个立即结束的 emitter（前端识别失败回退轮询）

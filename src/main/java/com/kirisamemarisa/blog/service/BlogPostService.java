@@ -16,7 +16,6 @@ public interface BlogPostService {
     ApiResponse<Long> addComment(CommentCreateDTO dto);
     List<CommentDTO> listComments(Long blogPostId, Long currentUserId);
     List<BlogPostDTO> list(int page, int size, Long currentUserId);
-    ApiResponse<Long> repost(RepostCreateDTO dto);
     PageResult<BlogPostDTO> pageList(int page, int size, Long currentUserId);
     PageResult<CommentDTO> pageComments(Long blogPostId, int page, int size, Long currentUserId);
     ApiResponse<Long> createWithCover(String title, String content, Long userId, String directory, MultipartFile cover);

@@ -179,46 +179,6 @@ public class BlogPostServiceImpl implements BlogPostService {
     }
 
     @Override
-    @Transactional
-    public ApiResponse<Long> repost(RepostCreateDTO dto) {
-        if (dto == null)
-            return new ApiResponse<>(400, "请求体不能为空", null);
-        if (dto.getOriginalPostId() == null)
-            return new ApiResponse<>(400, "原博客ID不能为空", null);
-        if (dto.getUserId() == null)
-            return new ApiResponse<>(400, "用户ID不能为空", null);
-
-        Optional<BlogPost> originalOpt = blogPostRepository.findById(dto.getOriginalPostId());
-        if (originalOpt.isEmpty())
-            return new ApiResponse<>(404, "原博客不存在", null);
-        Optional<User> userOpt = userRepository.findById(dto.getUserId());
-        if (userOpt.isEmpty())
-            return new ApiResponse<>(404, "用户不存在", null);
-
-        BlogPost original = originalOpt.get();
-
-        // 原博客正文用于生成转发标题和内容片段
-        String originalContent = original.getContent() != null ? original.getContent() : "";
-        String snippet = originalContent.length() > 30 ? originalContent.substring(0, 30) : originalContent;
-
-        BlogPost repost = new BlogPost();
-        repost.setUser(userOpt.get());
-        repost.setRepost(true);
-        repost.setOriginalPost(original);
-        repost.setTitle(snippet); // 标题为原文前30字
-        repost.setContent(snippet); // 内容只存片段（与需求“只有正文片段”一致）
-        repost.setCoverImageUrl(null); // 转发不保留封面
-        repost.setDirectory(null); // 不继承目录（需求未要求）
-        BlogPost saved = blogPostRepository.save(repost);
-
-        // 原博客转发计数自增（安全处理 null）
-        original.setRepostCount(safeInt(original.getRepostCount()) + 1);
-        blogPostRepository.save(original);
-
-        return new ApiResponse<>(200, "转发成功", saved.getId());
-    }
-
-    @Override
     public PageResult<BlogPostDTO> pageList(int page, int size, Long currentUserId) {
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<BlogPost> blogPage = blogPostRepository.findAll(pageRequest);

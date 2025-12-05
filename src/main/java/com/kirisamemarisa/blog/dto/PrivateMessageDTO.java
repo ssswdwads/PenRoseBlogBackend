@@ -3,6 +3,9 @@ package com.kirisamemarisa.blog.dto;
 import com.kirisamemarisa.blog.model.PrivateMessage.MessageType;
 import java.time.Instant;
 
+/**
+ * 私信基础 DTO，现增加 blogPreview 字段用于展示转发博客的预览信息。
+ */
 public class PrivateMessageDTO {
     private Long id;
     private Long senderId;
@@ -16,6 +19,9 @@ public class PrivateMessageDTO {
     private String senderAvatarUrl;
     private String receiverNickname;
     private String receiverAvatarUrl;
+
+    // NEW: 如果 text 中是站内博客链接，这里填充对应的预览
+    private BlogPreviewDTO blogPreview; // NEW
 
     public Long getId() {
         return id;
@@ -103,5 +109,13 @@ public class PrivateMessageDTO {
 
     public void setReceiverAvatarUrl(String receiverAvatarUrl) {
         this.receiverAvatarUrl = receiverAvatarUrl;
+    }
+
+    public BlogPreviewDTO getBlogPreview() {
+        return blogPreview;
+    }
+
+    public void setBlogPreview(BlogPreviewDTO blogPreview) {
+        this.blogPreview = blogPreview;
     }
 }
