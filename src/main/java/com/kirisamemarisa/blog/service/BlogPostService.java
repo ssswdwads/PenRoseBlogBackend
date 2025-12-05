@@ -1,0 +1,26 @@
+package com.kirisamemarisa.blog.service;
+
+import com.kirisamemarisa.blog.common.ApiResponse;
+import com.kirisamemarisa.blog.dto.*;
+import com.kirisamemarisa.blog.dto.PageResult;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
+
+public interface BlogPostService {
+    ApiResponse<Long> create(BlogPostCreateDTO dto);
+    BlogPostDTO getById(Long id, Long currentUserId);
+    ApiResponse<Boolean> update(Long id, BlogPostUpdateDTO dto);
+    ApiResponse<Boolean> toggleLike(Long blogPostId, Long userId);
+    ApiResponse<Boolean> toggleCommentLike(Long commentId, Long userId);
+    ApiResponse<Long> addComment(CommentCreateDTO dto);
+    List<CommentDTO> listComments(Long blogPostId, Long currentUserId);
+    List<BlogPostDTO> list(int page, int size, Long currentUserId);
+    PageResult<BlogPostDTO> pageList(int page, int size, Long currentUserId);
+    PageResult<CommentDTO> pageComments(Long blogPostId, int page, int size, Long currentUserId);
+    ApiResponse<Long> createWithCover(String title, String content, Long userId, String directory, MultipartFile cover);
+    ApiResponse<Boolean> updateWithCover(Long id, String content, String directory, MultipartFile cover);
+
+    // 新增：删除博客接口（只能作者删除）
+    ApiResponse<Boolean> delete(Long blogPostId, Long userId);
+}

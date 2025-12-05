@@ -1,0 +1,23 @@
+# application.properties.sample - example config (do NOT commit real secrets)
+
+spring.application.name=blog
+spring.datasource.url=jdbc:mysql://localhost:3306/blogdb?useSSL=false&serverTimezone=UTC&characterEncoding=utf8&allowPublicKeyRetrieval=true
+spring.datasource.username=root
+spring.datasource.password=changeme
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.open-in-view=false
+
+# Spring AI example (use environment variable in real setup)
+# spring.ai.openai.api-key=${OPENAI_API_KEY}
+# spring.ai.openai.model=deepseek-reasoner
+# spring.ai.openai.api-base-url=https://api.deepseek.com
+
+# JWT secret - DO NOT store real secret here
+# jwt.secret=changeme
+
+# resource locations (example)
+# resource.avatar-location=file:D:/Projects/selfprojects/blog/sources/avatar/
+# ...
+
