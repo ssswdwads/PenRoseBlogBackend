@@ -32,6 +32,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public void sendNotification(Long userId, NotificationDTO payload) {
+        if (payload == null || userId == null) return;
         if (rabbitBridge != null) {
             try {
                 NotificationMessage m = new NotificationMessage();
@@ -42,6 +43,8 @@ public class NotificationServiceImpl implements NotificationService {
                 m.setMessage(payload.getMessage());
                 m.setStatus(payload.getStatus());
                 m.setCreatedAt(payload.getCreatedAt());
+                m.setReferenceId(payload.getReferenceId());
+                m.setReferenceExtraId(payload.getReferenceExtraId());
                 rabbitBridge.publish(m);
                 return;
             } catch (Exception ex) {

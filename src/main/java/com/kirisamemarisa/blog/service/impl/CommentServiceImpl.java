@@ -19,10 +19,13 @@ import com.kirisamemarisa.blog.repository.CommentRepository;
 import com.kirisamemarisa.blog.repository.UserProfileRepository;
 import com.kirisamemarisa.blog.repository.UserRepository;
 import com.kirisamemarisa.blog.service.CommentService;
+import com.kirisamemarisa.blog.service.NotificationService;
+import com.kirisamemarisa.blog.dto.NotificationDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,6 +44,8 @@ public class CommentServiceImpl implements CommentService {
     private CommentMapper commentMapper;
     @Autowired
     private UserProfileRepository userProfileRepository;
+    @Autowired(required = false)
+    private NotificationService notificationService;
 
     @Override
     @Transactional
@@ -63,6 +68,27 @@ public class CommentServiceImpl implements CommentService {
         BlogPost blogPost = blogPostOpt.get();
         blogPost.setCommentCount(blogPost.getCommentCount() + 1);
         blogPostRepository.save(blogPost);
+
+        // 通知文章作者“收到评论”
+        try {
+            if (notificationService != null && blogPost.getUser() != null && comment.getUser() != null) {
+                Long ownerId = blogPost.getUser().getId();
+                Long commenterId = comment.getUser().getId();
+                if (ownerId != null && !ownerId.equals(commenterId)) {
+                    NotificationDTO n = new NotificationDTO();
+                    n.setType("COMMENT_REPLY"); // 归类为收到评论/回复
+                    n.setSenderId(commenterId);
+                    n.setReceiverId(ownerId);
+                    n.setMessage("你的文章《" + safeTitle(blogPost.getTitle()) + "》收到了新的评论");
+                    n.setCreatedAt(Instant.now());
+                    n.setReferenceId(comment.getId());       // 评论ID
+                    n.setReferenceExtraId(blogPost.getId()); // 文章ID
+                    notificationService.sendNotification(ownerId, n);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
         return new ApiResponse<>(200, "评论成功", comment.getId());
     }
 
@@ -168,7 +194,36 @@ public class CommentServiceImpl implements CommentService {
             commentLikeRepository.save(like);
             comment.setLikeCount(comment.getLikeCount() + 1);
             commentRepository.save(comment);
+
+            // 评论被点赞通知
+            try {
+                if (notificationService != null && comment.getUser() != null) {
+                    Long authorId = comment.getUser().getId();
+                    Long likerId = userId;
+                    if (authorId != null && !authorId.equals(likerId)) {
+                        NotificationDTO n = new NotificationDTO();
+                        n.setType("COMMENT_LIKE");
+                        n.setSenderId(likerId);
+                        n.setReceiverId(authorId);
+                        n.setMessage("你的评论收到了一个点赞");
+                        n.setCreatedAt(Instant.now());
+                        n.setReferenceId(comment.getId());
+                        if (comment.getBlogPost() != null) {
+                            n.setReferenceExtraId(comment.getBlogPost().getId());
+                        }
+                        notificationService.sendNotification(authorId, n);
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+
             return new ApiResponse<>(200, "点赞成功", true);
         }
+    }
+
+    private String safeTitle(String title) {
+        if (title == null)
+            return "";
+        return title.length() > 50 ? title.substring(0, 50) + "..." : title;
     }
 }

@@ -4,6 +4,7 @@ import com.kirisamemarisa.blog.common.ApiResponse;
 import com.kirisamemarisa.blog.dto.CommentReplyCreateDTO;
 import com.kirisamemarisa.blog.dto.CommentReplyDTO;
 import com.kirisamemarisa.blog.dto.PageResult;
+import com.kirisamemarisa.blog.dto.NotificationDTO;
 import com.kirisamemarisa.blog.mapper.CommentReplyMapper;
 import com.kirisamemarisa.blog.model.Comment;
 import com.kirisamemarisa.blog.model.CommentReply;
@@ -16,11 +17,13 @@ import com.kirisamemarisa.blog.repository.CommentRepository;
 import com.kirisamemarisa.blog.repository.UserProfileRepository;
 import com.kirisamemarisa.blog.repository.UserRepository;
 import com.kirisamemarisa.blog.service.CommentReplyService;
+import com.kirisamemarisa.blog.service.NotificationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Page;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Map;
@@ -36,19 +39,22 @@ public class CommentReplyServiceImpl implements CommentReplyService {
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final CommentReplyMapper replyMapper;
+    private final NotificationService notificationService;
 
     public CommentReplyServiceImpl(CommentReplyRepository replyRepository,
                                    CommentReplyLikeRepository replyLikeRepository,
                                    CommentRepository commentRepository,
                                    UserRepository userRepository,
                                    UserProfileRepository userProfileRepository,
-                                   CommentReplyMapper replyMapper) {
+                                   CommentReplyMapper replyMapper,
+                                   NotificationService notificationService) {
         this.replyRepository = replyRepository;
         this.replyLikeRepository = replyLikeRepository;
         this.commentRepository = commentRepository;
         this.userRepository = userRepository;
         this.userProfileRepository = userProfileRepository;
         this.replyMapper = replyMapper;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -70,6 +76,29 @@ public class CommentReplyServiceImpl implements CommentReplyService {
         reply.setUser(userOpt.get());
         reply.setContent(dto.getContent());
         replyRepository.save(reply);
+
+        // 通知被回复的评论作者
+        try {
+            if (notificationService != null) {
+                Comment comment = commentOpt.get();
+                if (comment.getUser() != null && reply.getUser() != null) {
+                    Long commentAuthorId = comment.getUser().getId();
+                    Long replierId = reply.getUser().getId();
+                    if (commentAuthorId != null && !commentAuthorId.equals(replierId)) {
+                        NotificationDTO n = new NotificationDTO();
+                        n.setType("COMMENT_REPLY");  // 收到回复
+                        n.setSenderId(replierId);
+                        n.setReceiverId(commentAuthorId);
+                        n.setMessage("你的评论收到了新的回复");
+                        n.setCreatedAt(Instant.now());
+                        n.setReferenceId(reply.getId());        // 回复ID
+                        n.setReferenceExtraId(comment.getId()); // 原评论ID
+                        notificationService.sendNotification(commentAuthorId, n);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
 
         return new ApiResponse<>(200, "回复成功", reply.getId());
     }
@@ -152,6 +181,29 @@ public class CommentReplyServiceImpl implements CommentReplyService {
             replyLikeRepository.save(like);
             reply.setLikeCount(reply.getLikeCount() + 1);
             replyRepository.save(reply);
+
+            // 楼中楼被点赞通知
+            try {
+                if (notificationService != null && reply.getUser() != null) {
+                    Long authorId = reply.getUser().getId();
+                    Long likerId = userId;
+                    if (authorId != null && !authorId.equals(likerId)) {
+                        NotificationDTO n = new NotificationDTO();
+                        n.setType("REPLY_LIKE");
+                        n.setSenderId(likerId);
+                        n.setReceiverId(authorId);
+                        n.setMessage("你的回复收到了一个点赞");
+                        n.setCreatedAt(Instant.now());
+                        n.setReferenceId(reply.getId());
+                        if (reply.getComment() != null) {
+                            n.setReferenceExtraId(reply.getComment().getId());
+                        }
+                        notificationService.sendNotification(authorId, n);
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+
             return new ApiResponse<>(200, "点赞成功", true);
         }
     }

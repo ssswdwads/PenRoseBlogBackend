@@ -3,13 +3,18 @@ package com.kirisamemarisa.blog.dto;
 import java.time.Instant;
 
 public class NotificationDTO {
-    private String type; // e.g., FRIEND_REQUEST, FRIEND_REQUEST_RESPONSE
+    private String type; // e.g., FRIEND_REQUEST, FRIEND_REQUEST_RESPONSE, PRIVATE_MESSAGE, POST_LIKE, COMMENT_LIKE, REPLY_LIKE, COMMENT_REPLY
     private Long requestId;
     private Long senderId;
     private Long receiverId;
     private String message;
     private String status;
     private Instant createdAt;
+
+    // 新增：可选的业务 ID，方便前端跳转
+    // 例如：评论 ID / 回复 ID / 文章 ID 等
+    private Long referenceId;
+    private Long referenceExtraId;
 
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
@@ -25,5 +30,20 @@ public class NotificationDTO {
     public void setStatus(String status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-}
 
+    public Long getReferenceId() {
+        return referenceId;
+    }
+
+    public void setReferenceId(Long referenceId) {
+        this.referenceId = referenceId;
+    }
+
+    public Long getReferenceExtraId() {
+        return referenceExtraId;
+    }
+
+    public void setReferenceExtraId(Long referenceExtraId) {
+        this.referenceExtraId = referenceExtraId;
+    }
+}

@@ -105,6 +105,8 @@ public class RabbitNotificationBridge {
         d.setMessage(m.getMessage());
         d.setStatus(m.getStatus());
         d.setCreatedAt(m.getCreatedAt());
+        d.setReferenceId(m.getReferenceId());
+        d.setReferenceExtraId(m.getReferenceExtraId());
         return d;
     }
 }

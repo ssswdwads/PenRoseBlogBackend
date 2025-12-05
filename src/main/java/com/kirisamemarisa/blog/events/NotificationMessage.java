@@ -12,6 +12,10 @@ public class NotificationMessage implements Serializable {
     private String status;
     private Instant createdAt;
 
+    // 新增：同 DTO，用于在 MQ 里携带业务ID
+    private Long referenceId;
+    private Long referenceExtraId;
+
     public Long getRequestId() { return requestId; }
     public void setRequestId(Long requestId) { this.requestId = requestId; }
     public Long getSenderId() { return senderId; }
@@ -26,5 +30,20 @@ public class NotificationMessage implements Serializable {
     public void setStatus(String status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-}
 
+    public Long getReferenceId() {
+        return referenceId;
+    }
+
+    public void setReferenceId(Long referenceId) {
+        this.referenceId = referenceId;
+    }
+
+    public Long getReferenceExtraId() {
+        return referenceExtraId;
+    }
+
+    public void setReferenceExtraId(Long referenceExtraId) {
+        this.referenceExtraId = referenceExtraId;
+    }
+}

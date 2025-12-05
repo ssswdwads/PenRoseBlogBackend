@@ -10,11 +10,14 @@ import com.kirisamemarisa.blog.repository.*;
 import com.kirisamemarisa.blog.service.BlogPostService;
 import com.kirisamemarisa.blog.mapper.BlogPostMapper;
 import com.kirisamemarisa.blog.service.CommentService;
+import com.kirisamemarisa.blog.service.NotificationService;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Value;
+
+import java.time.Instant;
 import java.util.Optional;
 import java.util.List;
 import com.kirisamemarisa.blog.dto.PageResult;
@@ -36,19 +39,21 @@ public class BlogPostServiceImpl implements BlogPostService {
     private final CommentLikeRepository commentLikeRepository;
     private final UserProfileRepository userProfileRepository;
     private final BlogPostMapper blogpostMapper;
-    private final CommentService commentService; // 新增依赖
+    private final CommentService commentService;
+    private final NotificationService notificationService;
 
     @Value("${resource.blogpostcover-location}")
     private String blogpostcoverLocation;
 
     public BlogPostServiceImpl(BlogPostRepository blogPostRepository,
-            UserRepository userRepository,
-            CommentRepository commentRepository,
-            BlogPostLikeRepository blogPostLikeRepository,
-            CommentLikeRepository commentLikeRepository,
-            UserProfileRepository userProfileRepository,
-            BlogPostMapper blogpostMapper,
-            CommentService commentService) { // 注入 CommentService
+                               UserRepository userRepository,
+                               CommentRepository commentRepository,
+                               BlogPostLikeRepository blogPostLikeRepository,
+                               CommentLikeRepository commentLikeRepository,
+                               UserProfileRepository userProfileRepository,
+                               BlogPostMapper blogpostMapper,
+                               CommentService commentService,
+                               NotificationService notificationService) {
         this.blogPostRepository = blogPostRepository;
         this.userRepository = userRepository;
         this.commentRepository = commentRepository;
@@ -56,7 +61,8 @@ public class BlogPostServiceImpl implements BlogPostService {
         this.commentLikeRepository = commentLikeRepository;
         this.userProfileRepository = userProfileRepository;
         this.blogpostMapper = blogpostMapper;
-        this.commentService = commentService; // 初始化 CommentService
+        this.commentService = commentService;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -89,7 +95,8 @@ public class BlogPostServiceImpl implements BlogPostService {
     @Transactional(readOnly = true)
     public BlogPostDTO getById(Long id, Long currentUserId) {
         Optional<BlogPost> opt = blogPostRepository.findById(id);
-        if (opt.isEmpty()) return null;
+        if (opt.isEmpty())
+            return null;
         BlogPost post = opt.get();
         // load author profile (may be absent)
         UserProfile profile = userProfileRepository.findById(post.getUser().getId()).orElse(null);
@@ -159,6 +166,27 @@ public class BlogPostServiceImpl implements BlogPostService {
             blogPostLikeRepository.save(like);
             post.setLikeCount(safeLong(post.getLikeCount()) + 1);
             blogPostRepository.save(post);
+
+            // 文章被点赞通知
+            try {
+                if (notificationService != null && post.getUser() != null) {
+                    Long ownerId = post.getUser().getId();
+                    Long likerId = userOpt.get().getId();
+                    // 自己给自己点赞不通知
+                    if (ownerId != null && !ownerId.equals(likerId)) {
+                        NotificationDTO dto = new NotificationDTO();
+                        dto.setType("POST_LIKE");
+                        dto.setSenderId(likerId);
+                        dto.setReceiverId(ownerId);
+                        dto.setMessage("你的文章《" + safeTitle(post.getTitle()) + "》收到了一个点赞");
+                        dto.setCreatedAt(Instant.now());
+                        dto.setReferenceId(post.getId()); // 文章ID
+                        notificationService.sendNotification(ownerId, dto);
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+
             return new ApiResponse<>(200, "点赞成功", true);
         }
     }
@@ -241,7 +269,8 @@ public class BlogPostServiceImpl implements BlogPostService {
 
     @Override
     @Transactional
-    public ApiResponse<Long> createWithCover(String title, String content, Long userId, String directory, MultipartFile cover) {
+    public ApiResponse<Long> createWithCover(String title, String content, Long userId, String directory,
+                                             MultipartFile cover) {
         if (title == null || title.trim().isEmpty())
             return new ApiResponse<>(400, "标题不能为空", null);
         if (content == null || content.trim().isEmpty())
@@ -271,7 +300,8 @@ public class BlogPostServiceImpl implements BlogPostService {
             // sanitize filename to avoid path traversal — allow only limited characters
             String rawName = cover.getOriginalFilename();
             String safeName = sanitizeFilename(rawName);
-            if (safeName.isEmpty()) safeName = String.valueOf(System.currentTimeMillis());
+            if (safeName.isEmpty())
+                safeName = String.valueOf(System.currentTimeMillis());
             String fileName = System.currentTimeMillis() + "_" + safeName;
             Path destPath = dirPath.resolve(fileName).normalize();
             try {
@@ -307,7 +337,8 @@ public class BlogPostServiceImpl implements BlogPostService {
         // 保存新封面文件
         if (cover != null && !cover.isEmpty()) {
             Path baseDir = Paths.get(toLocalPath(blogpostcoverLocation));
-            Path dirPath = baseDir.resolve(String.valueOf(post.getUser().getId())).resolve(String.valueOf(post.getId()));
+            Path dirPath = baseDir.resolve(String.valueOf(post.getUser().getId()))
+                    .resolve(String.valueOf(post.getId()));
             try {
                 Files.createDirectories(dirPath);
             } catch (IOException e) {
@@ -316,7 +347,8 @@ public class BlogPostServiceImpl implements BlogPostService {
             }
             String rawName = cover.getOriginalFilename();
             String safeName = sanitizeFilename(rawName);
-            if (safeName.isEmpty()) safeName = String.valueOf(System.currentTimeMillis());
+            if (safeName.isEmpty())
+                safeName = String.valueOf(System.currentTimeMillis());
             String fileName = System.currentTimeMillis() + "_" + safeName;
             Path destPath = dirPath.resolve(fileName).normalize();
             try {
@@ -339,9 +371,11 @@ public class BlogPostServiceImpl implements BlogPostService {
     }
 
     private String toLocalPath(String configured) {
-        if (configured == null) return "";
+        if (configured == null)
+            return "";
         String v = configured;
-        if (v.startsWith("file:")) v = v.substring(5);
+        if (v.startsWith("file:"))
+            v = v.substring(5);
         // Normalize slashes; keep as-is for Windows, ensure trailing separator
         if (!v.endsWith(File.separator) && !v.endsWith("/")) {
             v = v + File.separator;
@@ -350,17 +384,20 @@ public class BlogPostServiceImpl implements BlogPostService {
     }
 
     private String sanitizeFilename(String raw) {
-        if (raw == null) return "";
+        if (raw == null)
+            return "";
         // Remove any path segments by taking substring after last slash/backslash
         String name = raw;
         int idx = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
-        if (idx >= 0 && idx + 1 < name.length()) name = name.substring(idx + 1);
+        if (idx >= 0 && idx + 1 < name.length())
+            name = name.substring(idx + 1);
         // Remove any parent traversal
         name = name.replace("..", "");
         // Replace any character not in [a-zA-Z0-9._-] with underscore
         name = name.replaceAll("[^a-zA-Z0-9._-]", "_");
         // limit length
-        if (name.length() > 200) name = name.substring(name.length() - 200);
+        if (name.length() > 200)
+            name = name.substring(name.length() - 200);
         return name;
     }
 
@@ -372,5 +409,9 @@ public class BlogPostServiceImpl implements BlogPostService {
         return v == null ? 0 : v;
     }
 
-    // 省略其他已存在方法的实现（保持不变）
+    private String safeTitle(String title) {
+        if (title == null)
+            return "";
+        return title.length() > 50 ? title.substring(0, 50) + "..." : title;
+    }
 }

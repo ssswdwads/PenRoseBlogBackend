@@ -316,9 +316,11 @@ public class PrivateMessageController {
             dto.setMessage(choosePreview(msg));
             dto.setStatus(null);
             dto.setCreatedAt(Instant.now());
+            dto.setReferenceId(msg.getId()); // 业务主键：私信ID
 
             Long receiverId = dto.getReceiverId();
-            if (receiverId != null) {
+            // 不给自己发通知
+            if (receiverId != null && !receiverId.equals(dto.getSenderId())) {
                 notificationService.sendNotification(receiverId, dto);
             }
         } catch (Exception ignored) { }
