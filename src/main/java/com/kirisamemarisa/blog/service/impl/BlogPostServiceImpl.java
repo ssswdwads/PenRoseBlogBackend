@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.Files;
+import java.util.stream.Collectors;
 
 @Service
 public class BlogPostServiceImpl implements BlogPostService {
@@ -37,6 +38,8 @@ public class BlogPostServiceImpl implements BlogPostService {
     private final CommentRepository commentRepository;
     private final BlogPostLikeRepository blogPostLikeRepository;
     private final CommentLikeRepository commentLikeRepository;
+    private final CommentReplyRepository commentReplyRepository;
+    private final CommentReplyLikeRepository commentReplyLikeRepository;
     private final UserProfileRepository userProfileRepository;
     private final BlogPostMapper blogpostMapper;
     private final CommentService commentService;
@@ -50,6 +53,8 @@ public class BlogPostServiceImpl implements BlogPostService {
                                CommentRepository commentRepository,
                                BlogPostLikeRepository blogPostLikeRepository,
                                CommentLikeRepository commentLikeRepository,
+                               CommentReplyRepository commentReplyRepository,
+                               CommentReplyLikeRepository commentReplyLikeRepository,
                                UserProfileRepository userProfileRepository,
                                BlogPostMapper blogpostMapper,
                                CommentService commentService,
@@ -59,6 +64,8 @@ public class BlogPostServiceImpl implements BlogPostService {
         this.commentRepository = commentRepository;
         this.blogPostLikeRepository = blogPostLikeRepository;
         this.commentLikeRepository = commentLikeRepository;
+        this.commentReplyRepository = commentReplyRepository;
+        this.commentReplyLikeRepository = commentReplyLikeRepository;
         this.userProfileRepository = userProfileRepository;
         this.blogpostMapper = blogpostMapper;
         this.commentService = commentService;
@@ -368,6 +375,63 @@ public class BlogPostServiceImpl implements BlogPostService {
         }
         blogPostRepository.save(post);
         return new ApiResponse<>(200, "更新成功", true);
+    }
+
+    @Override
+    @Transactional
+    public ApiResponse<Boolean> delete(Long blogPostId, Long userId) {
+        if (blogPostId == null || userId == null) {
+            return new ApiResponse<>(400, "参数缺失", false);
+        }
+
+        // 只允许作者删除
+        Optional<BlogPost> postOpt = blogPostRepository.findById(blogPostId);
+        if (postOpt.isEmpty()) {
+            return new ApiResponse<>(404, "博客不存在", false);
+        }
+        BlogPost post = postOpt.get();
+        if (post.getUser() == null || !userId.equals(post.getUser().getId())) {
+            return new ApiResponse<>(403, "无权限删除该博客", false);
+        }
+
+        // 1. 找到该博客下所有评论
+        List<Comment> comments = commentRepository.findByBlogPostId(blogPostId);
+        List<Long> commentIds = comments.stream()
+                .map(Comment::getId)
+                .collect(Collectors.toList());
+
+        if (!commentIds.isEmpty()) {
+            // 2. 根据评论 ID 找到所有楼中楼回复
+            List<CommentReply> replies = commentReplyRepository.findAll().stream()
+                    .filter(r -> r.getComment() != null && commentIds.contains(r.getComment().getId()))
+                    .collect(Collectors.toList());
+            List<Long> replyIds = replies.stream()
+                    .map(CommentReply::getId)
+                    .collect(Collectors.toList());
+
+            // 3. 先删回复的点赞
+            if (!replyIds.isEmpty()) {
+                commentReplyLikeRepository.deleteByReplyIdIn(replyIds);
+            }
+            // 4. 再删回复本身
+            if (!commentIds.isEmpty()) {
+                commentReplyRepository.deleteByCommentIdIn(commentIds);
+            }
+
+            // 5. 删评论的点赞
+            commentLikeRepository.deleteByCommentIdIn(commentIds);
+
+            // 6. 删评论本身（也可以依靠 BlogPost 上的 cascade，这里显式删除更清晰）
+            commentRepository.deleteByBlogPostId(blogPostId);
+        }
+
+        // 7. 删文章的点赞
+        blogPostLikeRepository.deleteByBlogPostId(blogPostId);
+
+        // 8. 最后删博客
+        blogPostRepository.delete(post);
+
+        return new ApiResponse<>(200, "删除成功", true);
     }
 
     private String toLocalPath(String configured) {

@@ -2,6 +2,7 @@ package com.kirisamemarisa.blog.repository;
 
 import com.kirisamemarisa.blog.model.CommentReplyLike;
 import java.util.Optional;
+import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface CommentReplyLikeRepository extends JpaRepository<CommentReplyLike, Long> {
@@ -9,4 +10,10 @@ public interface CommentReplyLikeRepository extends JpaRepository<CommentReplyLi
     Optional<CommentReplyLike> findByReplyIdAndUserId(Long replyId, Long userId);
 
     long countByReplyId(Long replyId);
+
+    // 新增：根据回复 ID 删除点赞
+    void deleteByReplyId(Long replyId);
+
+    // 新增：根据多条回复批量删除点赞
+    void deleteByReplyIdIn(List<Long> replyIds);
 }

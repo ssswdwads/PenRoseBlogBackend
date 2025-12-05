@@ -36,7 +36,7 @@ public class BlogPostController {
 
     @GetMapping("/{id}")
     public ApiResponse<BlogPostDTO> get(@PathVariable Long id,
-            @RequestParam(required = false) Long currentUserId) {
+                                        @RequestParam(required = false) Long currentUserId) {
         BlogPostDTO dto = blogPostService.getById(id, currentUserId);
         if (dto == null) {
             return new ApiResponse<>(404, "博客不存在", null);
@@ -46,15 +46,15 @@ public class BlogPostController {
 
     @GetMapping
     public ApiResponse<PageResult<BlogPostDTO>> list(@RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) Long currentUserId) {
+                                                     @RequestParam(defaultValue = "10") int size,
+                                                     @RequestParam(required = false) Long currentUserId) {
         PageResult<BlogPostDTO> result = blogPostService.pageList(page, size, currentUserId);
         return new ApiResponse<>(200, "获取成功", result);
     }
 
     @PostMapping("/{id}/like")
     public ApiResponse<Boolean> toggleLike(@PathVariable Long id,
-            @RequestParam Long userId) {
+                                           @RequestParam Long userId) {
         return blogPostService.toggleLike(id, userId);
     }
 
@@ -65,16 +65,16 @@ public class BlogPostController {
 
     @GetMapping("/{id}/comments")
     public ApiResponse<PageResult<CommentDTO>> comments(@PathVariable Long id,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) Long currentUserId) {
+                                                        @RequestParam(defaultValue = "0") int page,
+                                                        @RequestParam(defaultValue = "10") int size,
+                                                        @RequestParam(required = false) Long currentUserId) {
         PageResult<CommentDTO> result = blogPostService.pageComments(id, page, size, currentUserId);
         return new ApiResponse<>(200, "获取成功", result);
     }
 
     @PostMapping("/comment/{id}/like")
     public ApiResponse<Boolean> toggleCommentLike(@PathVariable Long id,
-            @RequestParam Long userId) {
+                                                  @RequestParam Long userId) {
         return blogPostService.toggleCommentLike(id, userId);
     }
 
@@ -85,19 +85,26 @@ public class BlogPostController {
 
     @PostMapping("/withcover")
     public ApiResponse<Long> createWithCover(@RequestParam("title") String title,
-            @RequestParam("content") String content,
-            @RequestParam("userId") Long userId,
-            @RequestParam(value = "directory", required = false) String directory,
-            @RequestParam(value = "cover", required = false) MultipartFile cover) {
+                                             @RequestParam("content") String content,
+                                             @RequestParam("userId") Long userId,
+                                             @RequestParam(value = "directory", required = false) String directory,
+                                             @RequestParam(value = "cover", required = false) MultipartFile cover) {
         return blogPostService.createWithCover(title, content, userId, directory, cover);
     }
 
     @PutMapping("/{id}/withcover")
     public ApiResponse<Boolean> updateWithCover(@PathVariable Long id,
-            @RequestParam(value = "content", required = false) String content,
-            @RequestParam(value = "directory", required = false) String directory,
-            @RequestParam(value = "cover", required = false) MultipartFile cover) {
+                                                @RequestParam(value = "content", required = false) String content,
+                                                @RequestParam(value = "directory", required = false) String directory,
+                                                @RequestParam(value = "cover", required = false) MultipartFile cover) {
         return blogPostService.updateWithCover(id, content, directory, cover);
+    }
+
+    // 新增：删除博客接口
+    // 前端调用示例：DELETE /api/blogpost/{id}?userId=当前用户ID
+    @DeleteMapping("/{id}")
+    public ApiResponse<Boolean> delete(@PathVariable Long id, @RequestParam Long userId) {
+        return blogPostService.delete(id, userId);
     }
 
     /**
@@ -106,7 +113,7 @@ public class BlogPostController {
      */
     @PostMapping("/media")
     public ApiResponse<String> uploadMedia(@RequestParam("file") MultipartFile file,
-            @RequestParam(value = "userId", required = false) Long userId) {
+                                           @RequestParam(value = "userId", required = false) Long userId) {
         if (file == null || file.isEmpty())
             return new ApiResponse<>(400, "文件为空", null);
         if (userId != null && userId <= 0) {

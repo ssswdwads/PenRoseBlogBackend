@@ -20,4 +20,7 @@ public interface BlogPostService {
     PageResult<CommentDTO> pageComments(Long blogPostId, int page, int size, Long currentUserId);
     ApiResponse<Long> createWithCover(String title, String content, Long userId, String directory, MultipartFile cover);
     ApiResponse<Boolean> updateWithCover(Long id, String content, String directory, MultipartFile cover);
+
+    // 新增：删除博客接口（只能作者删除）
+    ApiResponse<Boolean> delete(Long blogPostId, Long userId);
 }
