@@ -11,9 +11,9 @@ public class AiConfig {
     @Bean
     public RestTemplate aiRestTemplate() {
         HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory();
-        factory.setConnectTimeout(10_000);
-        factory.setConnectionRequestTimeout(10_000);
-        factory.setReadTimeout(90_000);
+        factory.setConnectTimeout(90_000);
+        factory.setConnectionRequestTimeout(90_000);
+        factory.setReadTimeout(120_000);
         return new RestTemplate(factory);
     }
 }

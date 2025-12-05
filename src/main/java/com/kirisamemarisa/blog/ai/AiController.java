@@ -20,12 +20,54 @@ public class AiController {
     }
 
     @PostMapping("/chat")
-    public ResponseEntity<Map<String, Object>> chat(@RequestBody Map<String, String> payload) {
-        String message = payload.get("message");
+    public ResponseEntity<Map<String, Object>> chat(@RequestBody Map<String, Object> payload) {
+        Object m = payload.get("message");
+        String message = m == null ? null : String.valueOf(m);
+        String model = null;
+        Object md = payload.get("model");
+        if (md != null)
+            model = String.valueOf(md);
         if (message == null || message.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "message is required"));
         }
-        String reply = aiClientService.chat(message);
+        String reply = aiClientService.chat(message, model);
+        return ResponseEntity.ok(Map.of("reply", reply));
+    }
+
+    /**
+     * Chat with optional attachments (images or text). Body example:
+     * {
+     * "message": "explain this",
+     * "attachments": [
+     * {"mime":"image/png","name":"a.png","dataUrl":"data:image/png;base64,..."},
+     * {"mime":"text/plain","name":"note.txt","text":"..."}
+     * ]
+     * }
+     */
+    @PostMapping(path = "/chat/attachments", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> chatWithAttachments(@RequestBody Map<String, Object> payload) {
+        Object m = payload.get("message");
+        String message = m == null ? null : String.valueOf(m);
+        String model = null;
+        Object md = payload.get("model");
+        if (md != null)
+            model = String.valueOf(md);
+        if (message == null || message.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "message is required"));
+        }
+        Object atts = payload.get("attachments");
+        java.util.List<java.util.Map<String, Object>> attachments = java.util.Collections.emptyList();
+        if (atts instanceof java.util.List<?> list) {
+            attachments = new java.util.ArrayList<>();
+            for (Object o : list) {
+                if (o instanceof java.util.Map<?, ?> mm) {
+                    java.util.Map<String, Object> one = new java.util.HashMap<>();
+                    mm.forEach((k, v) -> one.put(String.valueOf(k), v));
+                    attachments.add(one);
+                }
+            }
+        }
+        String reply = aiClientService.chatWithAttachments(message, attachments, model);
         return ResponseEntity.ok(Map.of("reply", reply));
     }
 
@@ -35,7 +77,8 @@ public class AiController {
      * UX.
      */
     @org.springframework.web.bind.annotation.GetMapping(path = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chatStream(@org.springframework.web.bind.annotation.RequestParam("message") String message) {
+    public SseEmitter chatStream(@org.springframework.web.bind.annotation.RequestParam("message") String message,
+            @org.springframework.web.bind.annotation.RequestParam(value = "model", required = false) String model) {
         SseEmitter emitter = new SseEmitter(0L);
         if (message == null || message.isBlank()) {
             try {
@@ -49,7 +92,7 @@ public class AiController {
 
         new Thread(() -> {
             try {
-                String reply = aiClientService.chat(message);
+                String reply = aiClientService.chat(message, model);
                 if (reply == null)
                     reply = "";
                 // naive chunking: split by sentence delimiters; fallback to small substrings
