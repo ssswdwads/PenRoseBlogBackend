@@ -9,11 +9,12 @@ public class FriendRequestDTO {
     private String senderNickname;
     private String senderAvatarUrl;
     private String senderUsername;
+    // 新增：用于前端排序与展示时间
+    private Long createdAt;
 
     public Long getId() {
         return id;
     }
-
     public void setId(Long id) {
         this.id = id;
     }
@@ -21,7 +22,6 @@ public class FriendRequestDTO {
     public Long getSenderId() {
         return senderId;
     }
-
     public void setSenderId(Long senderId) {
         this.senderId = senderId;
     }
@@ -29,7 +29,6 @@ public class FriendRequestDTO {
     public Long getReceiverId() {
         return receiverId;
     }
-
     public void setReceiverId(Long receiverId) {
         this.receiverId = receiverId;
     }
@@ -37,7 +36,6 @@ public class FriendRequestDTO {
     public String getMessage() {
         return message;
     }
-
     public void setMessage(String message) {
         this.message = message;
     }
@@ -45,7 +43,6 @@ public class FriendRequestDTO {
     public String getStatus() {
         return status;
     }
-
     public void setStatus(String status) {
         this.status = status;
     }
@@ -53,7 +50,6 @@ public class FriendRequestDTO {
     public String getSenderNickname() {
         return senderNickname;
     }
-
     public void setSenderNickname(String senderNickname) {
         this.senderNickname = senderNickname;
     }
@@ -61,7 +57,6 @@ public class FriendRequestDTO {
     public String getSenderAvatarUrl() {
         return senderAvatarUrl;
     }
-
     public void setSenderAvatarUrl(String senderAvatarUrl) {
         this.senderAvatarUrl = senderAvatarUrl;
     }
@@ -69,8 +64,14 @@ public class FriendRequestDTO {
     public String getSenderUsername() {
         return senderUsername;
     }
-
     public void setSenderUsername(String senderUsername) {
         this.senderUsername = senderUsername;
+    }
+
+    public Long getCreatedAt() {
+        return createdAt;
+    }
+    public void setCreatedAt(Long createdAt) {
+        this.createdAt = createdAt;
     }
 }

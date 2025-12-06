@@ -58,9 +58,13 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         boolean online = notificationService.isOnline(receiver.getId());
         NotificationDTO note = FriendRequestMapper.toNotification(saved);
         note.setType("FRIEND_REQUEST");
+        // senderUsername 可提前补充
+        if (saved.getSender() != null) {
+            note.setSenderUsername(saved.getSender().getUsername());
+        }
 
         // send notification after the transaction commits to avoid inconsistency
-        sendNotificationAfterCommit(receiver.getId(), note, saved.getId(), "friend request");
+        sendNotificationAfterCommit(receiver.getId(), note, saved.getSender().getId(), "friend request");
 
         logger.info("Sent friend request {} from {} to {} (online={})", saved.getId(), sender.getId(), receiver.getId(),
                 online);
@@ -133,9 +137,12 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         FriendRequest saved = friendRequestRepository.save(req);
         NotificationDTO note = FriendRequestMapper.toNotification(saved);
         note.setType("FRIEND_REQUEST_RESPONSE");
+        if (saved.getSender() != null) {
+            note.setSenderUsername(saved.getSender().getUsername());
+        }
 
         // ensure notification sending is done after transaction commit
-        sendNotificationAfterCommit(req.getSender().getId(), note, req.getId(), "friend request response");
+        sendNotificationAfterCommit(req.getSender().getId(), note, saved.getSender().getId(), "friend request response");
 
         FriendRequestDTO dto = FriendRequestMapper.toDTO(saved);
         if (dto.getSenderId() != null) {
@@ -148,24 +155,36 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         return dto;
     }
 
-    private void sendNotificationAfterCommit(Long userId, NotificationDTO note, Long requestIdForLog, String what) {
+    /**
+     * 事务提交后查 profile 并补充到 NotificationDTO，再推送
+     */
+    private void sendNotificationAfterCommit(Long userId, NotificationDTO note, Long senderIdForProfile, String what) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
                     try {
+                        UserProfile up = userProfileRepository.findById(senderIdForProfile).orElse(null);
+                        if (up != null) {
+                            note.setSenderNickname(up.getNickname());
+                            note.setSenderAvatarUrl(up.getAvatarUrl());
+                        }
                         notificationService.sendNotification(userId, note);
                     } catch (Exception ex) {
-                        logger.error("Failed to send {} notification for request {}: {}", what, requestIdForLog,
-                                ex.toString());
+                        logger.error("Failed to send {} notification for sender {}: {}", what, senderIdForProfile, ex.toString());
                     }
                 }
             });
         } else {
             try {
+                UserProfile up = userProfileRepository.findById(senderIdForProfile).orElse(null);
+                if (up != null) {
+                    note.setSenderNickname(up.getNickname());
+                    note.setSenderAvatarUrl(up.getAvatarUrl());
+                }
                 notificationService.sendNotification(userId, note);
             } catch (Exception ex) {
-                logger.error("Failed to send {} notification for request {}: {}", what, requestIdForLog, ex.toString());
+                logger.error("Failed to send {} notification for sender {}: {}", what, senderIdForProfile, ex.toString());
             }
         }
     }

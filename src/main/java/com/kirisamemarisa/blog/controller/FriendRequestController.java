@@ -107,7 +107,6 @@ public class FriendRequestController {
             @RequestHeader(name = "Authorization", required = false) String authorization,
             @AuthenticationPrincipal UserDetails principal) {
         User me = resolveCurrentUser(principal, headerUserId, authorization);
-        // also accept token - try parse if not resolved
         if (me == null && token != null && !token.isEmpty()) {
             Long uid = com.kirisamemarisa.blog.common.JwtUtil.getUserIdFromToken(token);
             if (uid != null)
@@ -117,9 +116,9 @@ public class FriendRequestController {
             logger.info("Unauthenticated SSE subscribe attempt");
             return null;
         }
-        // initial payload: pending requests (DTO)
-        List<FriendRequestDTO> pending = friendRequestService.pendingFor(me);
-        logger.info("User {} subscribed to friend request SSE (pending={})", me.getId(), pending.size());
-        return notificationService.subscribe(me.getId(), pending);
+        logger.info("User {} subscribed to friend request SSE", me.getId());
+        // 首次订阅时推送历史 pending 好友请求，让前端无需刷新即可显示完整卡片
+        List<FriendRequestDTO> initialPending = friendRequestService.pendingFor(me);
+        return notificationService.subscribe(me.getId(), initialPending);
     }
 }

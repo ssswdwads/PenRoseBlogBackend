@@ -18,6 +18,9 @@ public class FriendRequestMapper {
         dto.setReceiverId(fr.getReceiver() != null ? fr.getReceiver().getId() : null);
         dto.setMessage(fr.getMessage());
         dto.setStatus(fr.getStatus() != null ? fr.getStatus().name() : null);
+        // 一并补充创建时间，前端用于排序与展示
+        dto.setCreatedAt(fr.getCreatedAt() != null ? fr.getCreatedAt().toEpochMilli() : null);
+        // 不查 profile
         return dto;
     }
 
@@ -32,6 +35,10 @@ public class FriendRequestMapper {
         n.setMessage(fr.getMessage());
         n.setStatus(fr.getStatus() != null ? fr.getStatus().name() : null);
         n.setCreatedAt(fr.getCreatedAt());
+        // 不查 profile
+        if (fr.getSender() != null) {
+            n.setSenderUsername(fr.getSender().getUsername());
+        }
         return n;
     }
 

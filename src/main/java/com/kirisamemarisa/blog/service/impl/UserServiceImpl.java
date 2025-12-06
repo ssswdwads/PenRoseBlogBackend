@@ -73,6 +73,9 @@ public class UserServiceImpl implements UserService {
         UserProfile profile = new UserProfile();
         profile.setUser(user);
         profile.setNickname("Cat" + user.getId());
+        if (dto.getAvatarUrl() != null && !dto.getAvatarUrl().trim().isEmpty()) {
+            profile.setAvatarUrl(dto.getAvatarUrl().trim());
+        }
         userProfileRepository.save(profile);
     }
 
@@ -260,6 +263,9 @@ public class UserServiceImpl implements UserService {
         UserProfile profile = new UserProfile();
         profile.setUser(user);
         profile.setNickname("Cat" + user.getId());
+        if (dto.getAvatarUrl() != null && !dto.getAvatarUrl().trim().isEmpty()) {
+            profile.setAvatarUrl(dto.getAvatarUrl().trim());
+        }
         userProfileRepository.save(profile);
         return user.getId();
     }

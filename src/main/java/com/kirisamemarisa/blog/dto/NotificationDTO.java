@@ -22,6 +22,18 @@ public class NotificationDTO {
     private Long referenceId;
     private Long referenceExtraId;
 
+    private String senderNickname;
+    private String senderAvatarUrl;
+    private String senderUsername;
+
+    public String getSenderNickname() { return senderNickname; }
+    public void setSenderNickname(String senderNickname) { this.senderNickname = senderNickname; }
+
+    public String getSenderAvatarUrl() { return senderAvatarUrl; }
+    public void setSenderAvatarUrl(String senderAvatarUrl) { this.senderAvatarUrl = senderAvatarUrl; }
+    public String getSenderUsername() { return senderUsername; }
+    public void setSenderUsername(String senderUsername) { this.senderUsername = senderUsername; }
+
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
 
